@@ -124,8 +124,9 @@ homeostasis-ingress-firewall/
 ├── tests/
 │   └── test_homeostasis_core.py  # [★확장] 수리·물리 무결성 검증을 위한 샌드박스 유닛 테스트
 │
-└── build.rs                      # NVIDIA NVCC 컴파일러 최적화 파이프라인 정적 링크 스크립트
-
+├── build.rs                      # NVIDIA NVCC 컴파일러 최적화 파이프라인 정적 링크 스크립트
+├── deploy.sh                     # [★신설] Kernel-Host 원터치 가동 및 안전 롤백 자동화 배포 엔진
+└── Makefile                      # 이종 가속 커널 일괄 자동 합성 및 Triton 캐시 퍼지 빌드 시스템
 
 ```
 
