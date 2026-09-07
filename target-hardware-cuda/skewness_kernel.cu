@@ -1,5 +1,8 @@
 /*
  * Copyright (c) 2026 PJHkorea. All rights reserved.
+ * This program is free software: you can redistribute it and/or modify it under 
+ * the terms of the GNU Affero General Public License as published by the Free Software Foundation.
+ *
  * [5th-Gen Pure Hardware Acceleration Kernel] CUDA Skewness Flattening Damper.
  * 
  * homeostasis-kernel의 3차 왜도 소산 댐퍼 수학식을 GPU 온칩 고속 메모리(SRAM) 및 
@@ -29,6 +32,7 @@ __global__ void execute_hardware_skewness_flattening(
     const int batch_size)
 {
     // GPU 온칩 고속 공유 메모리(Shared Memory) 할당 - 뱅크 충돌 방지 스트라이드 적용
+    // 외부 프레임워크와의 메모리 참조 연동 규격을 만족하기 위해 물리 공간 레이아웃을 영구 보존합니다.
     __shared__ float s_matrix[ALIGNED_STRIDE];
     __shared__ float s_squared_matrix[ALIGNED_STRIDE];
 
@@ -55,12 +59,12 @@ __global__ void execute_hardware_skewness_flattening(
     const int global_offset = batch_idx * SPATIAL_DIM + tid;
     float raw_val = d_traffic_stream[global_offset];
     
-    // 타 하드웨어 레이어(Triton/FFI) 전용 복원 파이프라인용 온칩 SRAM 백업
+    // 외부 모니터링 레이어(JAX/Triton) 바인딩 안전지대 수호를 위해 온칩 SRAM 주소 레일에 데이터 동시 적재
     s_matrix[tid] = raw_val;
     s_squared_matrix[tid] = raw_val * raw_val; 
 
     /* 
-     * [★ 하드웨어 한계 최적화: Register Reuse & Branchless ALU Line]
+     * [★ 하드웨어 최적화: Register Reuse & Branchless ALU Line]
      * 이미 고속 가속기 ALU 레지스터에 선점된 raw_val 구조를 SRAM을 거치지 않고 다이렉트 바인딩합니다.
      * 기계어 레벨에서 공유 메모리 로드 명령어(LDS) 소모를 원천 박멸하여 병목을 제거합니다.
      */
@@ -82,7 +86,7 @@ __global__ void execute_hardware_skewness_flattening(
     }
 
 
-       /*
+          /*
      * [★ 하드웨어 로직 보정] Warp-Level Shuffle 직후 단계 연산 전개.
      * 각 워프의 0번 레인(lane_id == 0)들이 구한 부분합을 온칩 공유 메모리 배열에 격리 적재합니다.
      */
@@ -97,7 +101,7 @@ __global__ void execute_hardware_skewness_flattening(
     __shared__ float block_reciprocal_std;
 
     /*
-     * [★ 버그 수정] 블록 0번 스레드가 4개 워프의 모든 부분합을 최종 취합하여 
+     * [★ 버그 수정] Bleeding Edge 블록 0번 스레드가 4개 워프의 모든 부분합을 최종 취합하여 
      * 128개 스레드 전체의 무결한 통계량(Mean 및 Variance)을 도출하도록 파이프라인 연동
      */
     if (tid == 0) {
@@ -121,7 +125,8 @@ __global__ void execute_hardware_skewness_flattening(
     }
     __syncthreads(); // 계산된 block_mean 및 block_reciprocal_std가 전체 스레드 레지스터에 전파될 때까지 대기
 
-    // 3. Branchless 1-Cycle FMA Machine-Code Fusion
+
+       // 3. Branchless 1-Cycle FMA Machine-Code Fusion
     // [최적화 반영] 공유 메모리(s_matrix) 대신 이미 가속기 파이프라인에 선점된 raw_val 레지스터 직접 재사용
     float cached_raw = raw_val;
     
@@ -165,7 +170,6 @@ __global__ void execute_hardware_skewness_flattening(
         d_skewness_vector[batch_idx] = total_skewness / (float)SPATIAL_DIM;
     }
 }
-
 
 /*
  * [★ 외부 인터페이스 연동 규격] C-Linkage FFI Bridge Launch Pad
