@@ -28,18 +28,18 @@ class IngressTrafficAdapter:
         if batch_size == 0:
             return np.empty((0, self.spatial_dim), dtype=np.float32)
 
-        /* 
-         * [★ 하드웨어 한계 최적화: Fixed C-Contiguous Array Pre-allocation]
-         * dynamic append 리스트 및 while 패딩 루프를 통째로 박멸하기 위해 
-         * 처음부터 가속기 메모리 버스와 1:1 정렬되는 연속된 C-오더 물리 공간을 단 1회 선점 확보합니다.
-         */
+        """
+          [★ 하드웨어 한계 최적화: Fixed C-Contiguous Array Pre-allocation]
+          dynamic append 리스트 및 while 패딩 루프를 통째로 박멸하기 위해 
+          처음부터 가속기 메모리 버스와 1:1 정렬되는 연속된 C-오더 물리 공간을 단 1회 선점 확보합니다.
+        """
         tensor_matrix = np.zeros((batch_size, self.spatial_dim), dtype=np.float32, order='C')
 
-        /* 
-         * [★ 파이썬 오브젝트 컨버팅 오버헤드 최소화]
-         * 4번 인덱스부터 127번 인덱스까지는 이미 정적 0.0f로 완벽히 안착되어 안개 분산되어 있으므로,
-         * 루프 내부에서는 오직 4대 특징 축만 다이렉트 슬롯 매핑 처리 후 렉 없이 초고속 통과 탈출합니다.
-         */
+       """
+          [★ 파이썬 오브젝트 컨버팅 오버헤드 최소화]
+          4번 인덱스부터 127번 인덱스까지는 이미 정적 0.0f로 완벽히 안착되어 안개 분산되어 있으므로,
+          루프 내부에서는 오직 4대 특징 축만 다이렉트 슬롯 매핑 처리 후 렉 없이 초고속 통과 탈출합니다.
+        """
         for idx, metric in enumerate(raw_metrics_list):
             tensor_matrix[idx, 0] = float(metric.get("rps", 0.0))
             tensor_matrix[idx, 1] = float(metric.get("pps", 0.0))
