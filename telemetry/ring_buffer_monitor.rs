@@ -10,7 +10,12 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-// target-kernel-xdp 및 target-proxy-rust와 완벽하게 대칭 정렬된 32바이트 C-구조체 레이아웃
+/*
+ * [★ 수리 정렬] target-kernel-xdp(C언어)의 struct telemetry_payload와 
+ * 기계어 레벨에서 메모리 뷰가 1:1 매핑되도록 패딩 바이트 크기를 정밀 보정합니다.
+ * 멤버 합산: src_ip(4) + calculated_skewness(4) + current_gate_mask(4) + packet_bytes_len(4) = 16바이트
+ * 나머지 16바이트를 명시적 패딩으로 채워 완벽한 32-Byte Hardware Bank Stride Alignment를 달성합니다.
+ */
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(32))]
 pub struct TelemetryRawPayload {
@@ -18,7 +23,7 @@ pub struct TelemetryRawPayload {
     pub calculated_skewness: i32,    // Q16.16 고정소수점 왜도 계수 대리치
     pub current_gate_mask: u32,      // 위상 천이 활성화 여부 (0 or 1)
     pub packet_bytes_len: u32,       
-    pub padding: [u8; 12],           // 32-Byte Hardware Bank Stride Alignment 패딩
+    pub padding: [u8; 16],           // 정밀 계산된 32바이트 경계 가드 패딩
 }
 
 // 락프리 순환 버퍼 공간 정의 (Hardware-level Lock-Free Ring Buffer Simulation)
@@ -37,7 +42,7 @@ impl LockFreeRingBuffer {
                 calculated_skewness: 0,
                 current_gate_mask: 0,
                 packet_bytes_len: 0,
-                padding: [0; 12],
+                padding: [0; 16],
             }; 1024],
             head: std::sync::atomic::AtomicUsize::new(0),
             tail: std::sync::atomic::AtomicUsize::new(0),
@@ -45,7 +50,7 @@ impl LockFreeRingBuffer {
         }
     }
 
-    /* 
+       /* 
      * [Hot Path Ingress Injection Proxy]
      * 커널 xdp_ingress.c / bitwise_mux.c가 패킷 처리 완료 후 단 1클록 만에 로그를 밀어 넣는 함수와 상등
      */
@@ -74,13 +79,16 @@ pub async fn run_telemetry_monitoring_daemon(
 ) {
     println!("🛰️  [TELEMETRY-DAEMON] Async Ring-Buffer Telemetry Scanner Engine Activated.");
     
-    // 로그 데이터 추출 시 메모리 재할당 오버헤드를 막기 위한 정적 가상 레지스터 슬라이스 백업
+    /*
+     * [★ 수리 정렬] 32바이트 대칭 구조(padding [u8; 16]) 규격을 내부 추출용 정적 가상 레지스터 슬라이스에도 동기화합니다.
+     * 데이터 추출 시 메모리 재할당 오버헤드를 막고 기계어 블록 복사(SIMD Copy) 효율을 극대화합니다.
+     */
     let mut local_drain_buffer = [TelemetryRawPayload {
         src_ip: 0,
         calculated_skewness: 0,
         current_gate_mask: 0,
         packet_bytes_len: 0,
-        padding: [0; 12],
+        padding: [0; 16], // 16바이트 정밀 가드 패딩 동기화 완료
     }; 32];
 
     while !shutdown_signal.load(Ordering::Relaxed) {
@@ -119,9 +127,13 @@ pub async fn run_telemetry_monitoring_daemon(
     }
 }
 
+
 // --- Production-Grade Component Isolated Telemetry Verification ---
 #[tokio::main]
 async fn main() {
+    // 비동기 타이머 동작을 위한 명시적 스코프 바인딩 유도
+    use std::time::Duration;
+
     println!("========================================================================");
     print!("🧪 [TELEMETRY-TEST] Initiating Pure Isolation Telemetry Sanity Sandbox\n");
     println!("========================================================================");
@@ -144,12 +156,16 @@ async fn main() {
     {
         let mut lock = ring_buffer.lock().await;
         
+        /*
+         * [★ 수리 정렬] 가상 공격 덤프 인스턴스 생성이 기계어 32바이트 구조체 바운더리를 
+         * 완벽히 침투·동기화하도록 정밀 보정된 패딩 레이아웃([0; 16])을 바인딩합니다.
+         */
         let mock_attack_log = TelemetryRawPayload {
             src_ip: 0xC0A80064, // 192.168.0.100
             calculated_skewness: -1441792, // 수치 변이 비대칭 폭주 상태 (-22.0 * 65536)
             current_gate_mask: 1,          // 1 = XDP_DROP 증발 필터 격리 상태
             packet_bytes_len: 1460,
-            padding: [0; 12],
+            padding: [0; 16],              // 16바이트 대칭 패딩 정렬 완료
         };
 
         println!("⚡ [Hot-Path Mock] Packet Elimination Complete. Pushing state to Lock-Free Ring Buffer Address.");
@@ -168,3 +184,4 @@ async fn main() {
     println!("✅ [SANDBOX PASSED] Telemetry Daemon verified stable without blocking Hot Path.");
     println!("========================================================================");
 }
+
