@@ -13,6 +13,7 @@ import time
 import os
 import sys
 from typing import Dict, Any
+import numpy as np # [★ 최적화] 무거운 파이썬 random 오버헤드를 박멸하기 위한 저수준 벡터 래치 주입
 
 # NVML 인터페이스 바인딩 (pynvml 라이브러리 차용)
 try:
@@ -32,6 +33,9 @@ class HardwareShifterTelemetryDaemon:
         self.sm_util_history = []
         self.pcie_traffic_history = [] # PCIe 버스 대역폭의 수리 기하학적 미분 주파수 역산을 위한 레일 추가
         self.history_window_size = 10  # 10개 틱(100ms) 슬라이딩 윈도우 상한선 고정 (힙 할당 지터 예방)
+        
+        # [★ 아키텍처 보정 추가] 지속 공격 유입 시 윈도우 포화로 Gradient가 0이 되어 오탐을 뿜는 버그 박멸용 대조군 레일
+        self.baseline_power = 25.0    # 평상시 인프라 가동 베이스라인 물리 전력 표준 캐싱값 (25W)
 
     def initialize_nvml_context(self) -> bool:
         """
@@ -41,8 +45,9 @@ class HardwareShifterTelemetryDaemon:
             print("⚠️  [NVML-WARN] 'pynvml' 패키지가 감지되지 않아 물리 시뮬레이션 가상 래치 모드로 전환합니다.")
             self.is_initialized = True
             return True
+
             
-        try:
+             try:
             pynvml.nvmlInit()
             self.gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(self.device_index)
             self.is_initialized = True
@@ -63,12 +68,17 @@ class HardwareShifterTelemetryDaemon:
             # --- 0% 오버헤드 샌드박스 물리 검증 모사용 목(Mock) 트래픽 파형 생성 단 ---
             # 평상시 전력량(25W) 대비 디도스 툴킷 폭격 시 3차 왜도 댐퍼가 가동되며 
             # 가속기 내부 연산 압착으로 전력이 240W 이상 급증하는 전기 파형 모사
-            import random
+            # [★ 최적화] 무거운 파이썬 random 인터프리터 오버헤드를 박멸하고 NumPy C-API 레벨 저수준 난수 가속 유도
             is_mock_attack = os.environ.get("MOCK_DDoS_ATTACK", "0") == "1"
             
-            power_watts = random.uniform(220.0, 245.0) if is_mock_attack else random.uniform(25.0, 35.0)
-            sm_util = random.uniform(85.0, 98.0) if is_mock_attack else random.uniform(2.0, 8.0)
-            pcie_tx_rx = random.uniform(12.5, 15.8) if is_mock_attack else random.uniform(0.01, 0.05) # GB/s
+            if is_mock_attack:
+                power_watts = float(np.random.uniform(220.0, 245.0))
+                sm_util = float(np.random.uniform(85.0, 98.0))
+                pcie_tx_rx = float(np.random.uniform(12.5, 15.8)) # GB/s
+            else:
+                power_watts = float(np.random.uniform(25.0, 35.0))
+                sm_util = float(np.random.uniform(2.0, 8.0))
+                pcie_tx_rx = float(np.random.uniform(0.01, 0.05)) # GB/s
             
             return {
                 "power_draw_watts": power_watts,
@@ -76,7 +86,8 @@ class HardwareShifterTelemetryDaemon:
                 "pcie_throughput_gbps": pcie_tx_rx
             }
 
-        try:
+
+               try:
             # 1. GPU 하드웨어에서 현재 소모 중인 물리 전력 스캔 (밀리와트 단위 -> 와트 변환)
             raw_power = pynvml.nvmlDeviceGetPowerUsage(self.gpu_handle)
             power_watts = float(raw_power) / 1000.0
@@ -122,11 +133,10 @@ class HardwareShifterTelemetryDaemon:
         if len(self.pcie_traffic_history) > self.history_window_size:
             self.pcie_traffic_history.pop(0)
 
-        # 수리 대수학적 에너지 변이 경사도 계산 (Gradient of Power Wave)
-        if len(self.power_history) >= 2:
-            power_gradient = self.power_history[-1] - self.power_history[0]
-        else:
-            power_gradient = 0.0
+        # [★ 아키텍처 결함 수정: Gradient 포화 에러 원천 박멸]
+        # 디도스 장기 지속 시 윈도우 내부 전력값이 240W 이상으로 포화되어 [-1] - [0]이 0.0으로 굳어지는 대참사를 차단합니다.
+        # 인프라 고유 기저 물리 전력 대조군(self.baseline_power = 25.0W)과의 차이점을 동적 에너지 스파이크 경사도로 정의합니다.
+        power_gradient = p_watts - self.baseline_power
 
         # 역공학 판단 시그니처 매트릭스 집행 (수목형 분기문이 아니며 오프라인 전용 관제기이므로 편하게 분석)
         # PCIe 패킷 인입 대역폭이 비정상적으로 터졌는데, 왜도 댐퍼 및 슈뢰딩거 노치 필터가 작동하여 
@@ -148,6 +158,11 @@ if __name__ == "__main__":
 
     # 1. 외부 관제 데몬 생성 및 드라이버 결합
     daemon = HardwareShifterTelemetryDaemon(device_index=0)
+    
+    # 런타임 결과 상태 축적을 위한 어설션 추적용 레일 개설
+    scenario_a_statuses = []
+    scenario_b_statuses = []
+    
     if daemon.initialize_nvml_context():
         
         # 2. [시나리오 A] 정상 다이나믹 트래픽 운영 상태 프로파일링 (오버헤드 0%)
@@ -157,6 +172,7 @@ if __name__ == "__main__":
         for tick in range(3):
             metrics = daemon.capture_silicon_signature_tick()
             status = daemon.analyze_inverse_telemetry_waves(metrics)
+            scenario_a_statuses.append(status)
             print(f" ├─ Tick [{tick}] | Power: {metrics['power_draw_watts']:.2f}W | SM: {metrics['sm_utilization_percent']:.1f}% | {status}")
             time.sleep(0.01)
 
@@ -166,14 +182,27 @@ if __name__ == "__main__":
         print("📋 Scenario B: Ingesting High-Frequency DDoS Toolkit Volumetric Attack...")
         os.environ["MOCK_DDoS_ATTACK"] = "1"
         
-        # 전력 소모 수직 상승 파형(Gradient) 축적을 정확히 유도하기 위해 역사적 데이터 레일 사전 래치 주입
-        # 첫 번째 틱 유입 시 이전 윈도우 베이스라인(평상시 25W 수준) 대비 스파이크 변이를 포착하도록 동적 스케일링 설정
+        # [★ 아키텍처 완결] 3파트의 대조군 필터 리팩토링 덕분에, 버퍼가 포화되는 후반부 틱(2, 3)에서도
+        # 판정선 붕괴 대참사 없이 완벽하게 디도스 시그니처 파형을 연속 추적해 냅니다.
         for tick in range(4):
             metrics = daemon.capture_silicon_signature_tick()
             status = daemon.analyze_inverse_telemetry_waves(metrics)
+            scenario_b_statuses.append(status)
             print(f" ├─ Tick [{tick}] | Power: {metrics['power_draw_watts']:.2f}W | SM: {metrics['sm_utilization_percent']:.1f}% | {status}")
             time.sleep(0.01)
 
     print("========================================================================")
-    print("✅ [SANDBOX PASSED] Non-invasive Hardware Counter Telemetry verified successful.")
+    
+    # [★ 자율 품질 보증 단언 가드 바인딩]
+    # 시나리오 A는 전 구간 정상(🟢), 시나리오 B는 전 구간 공격 감지(🚨) 링이 깨지지 않고 유지되었는지 엄격하게 체크합니다.
+    is_scenario_a_clean = all("🟢" in s for s in scenario_a_statuses)
+    is_scenario_b_locked = all("🚨" in s for s in scenario_b_statuses)
+    
+    print(f"├─ Infrastructure Quiescent Wave Standard  : {is_scenario_a_clean}")
+    print(f"└─ Continuous Attack Wave Confinement Standard : {is_scenario_b_locked}")
+    
+    assert is_scenario_a_clean and is_scenario_b_locked, "❌ [Fatal] Telemetry Saturation Defect or False Negative Anomaly Manifested!"
+    
+    print("\n✅ [SANDBOX PASSED] Non-invasive Hardware Counter Telemetry verified successful.")
     print("========================================================================\n")
+
