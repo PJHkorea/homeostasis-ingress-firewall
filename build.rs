@@ -1,13 +1,13 @@
 // build.rs
 fn main() {
-    // 1. 하드웨어 소스 의존성 변경 감지 트리거 (Jitter 없는 지능형 증분 컴파일)
-    // skewness_kernel.cu 파일의 소스코드가 수정될 때만 nvcc 컴파일러를 재구동합니다.
-    println!("cargo:rerun-if-changed=../target-hardware-cuda/skewness_kernel.cu");
+    // 1. [★ 구조 명세 동기화] 하드웨어 소스 의존성 변경 감지 트리거
+    // 리팩토링된 언더바(_) 패키지 경로 규격(target_hardware_cuda)을 정확히 조준합니다.
+    println!("cargo:rerun-if-changed=../target_hardware_cuda/skewness_kernel.cu");
 
     // 2. NVIDIA NVCC 호스트 가속 컴파일러 파이프라인 빌드업
     cc::Build::new()
-        // 대상 CUDA 소스 파일 바인딩
-        .file("../target-hardware-cuda/skewness_kernel.cu")
+        // [★ 구조 명세 동기화] 대상 CUDA 소스 파일 실제 물리 경로 바인딩 수정
+        .file("../target_hardware_cuda/skewness_kernel.cu")
         // 엔비디아 컴파일러 레일 강제 지정
         .cuda(true)
         // [★ 하드웨어 아키텍처 최적화 플래그 체인]
