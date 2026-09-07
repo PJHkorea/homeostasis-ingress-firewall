@@ -36,24 +36,26 @@ def execute_pure_skewness_flattening(
     """
     [3rd-Order Skewness Moment Flattening Lattice Differentiation]
     
-    [KR] 유입되는 트래픽 매트릭스의 3차 비대칭 모멘트(왜도)를 계산하고, 
+    [KR] 유입되는 고도화 특징 텐서 스트림의 3차 비대칭 모멘트(왜도)를 계산하고, 
          CPU 분기문(if-else) 없이 단 1클록 FMA 기계어 융합 구조로 충격파를 완충 소산시킵니다.
          
     [EN] Evaluates 3rd-order asymmetric structural deviations within the traffic stream,
          algebraically dissipating burst shockwaves via branchless register-level FMA hardware actions.
          
     Args:
-        traffic_stream: 형상이 (Batch, Spatial_Dim)인 실시간 인입 트래픽 특징 벡터 행렬.
+        traffic_stream: 형상이 (Batch, Time_Seq, 4)인 고도화 특징 텐서 스트림.
+                        마지막 특징 차원 축(axis=-1)은 [RPS, pps, ErrorRate, BandwidthDelta]로 칼정렬됨.
         constants: initialize_damper_constants에서 생성된 고정 물리 상수 딕셔너리.
         
     Returns:
         damped_stream: 왜도 충격파가 정형화 및 완충 소산된 정규화 트래픽 행렬.
         skewness_vector: 이상 징후 분석(Control Plane)용 실시간 추출 왜도 벡터.
     """
-      # 0. 컨텍스트로부터 물리적 수치 가드레일 및 스케일링 계수 언팩 완료 시점
+    # 0. 컨텍스트로부터 물리적 수치 가드레일 및 스케일링 계수 언팩
     alpha = constants["viscosity_alpha"]
     eps = constants["safety_epsilon"]
     spatial_dim = constants["spatial_dimension"]
+
 
     # [★ 아키텍처 리팩토링: 0-Copy 축 직접 유도 레일]
     # 무거운 .reshape 오버헤드를 완벽히 도려내고 마지막 데이터 차원 특징 축(axis=-1)을 다이렉트로 스캔합니다.
