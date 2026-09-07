@@ -45,10 +45,22 @@ class TestHomeostasisIngressFirewall(unittest.TestCase):
             blend_ratio=1.0,
             constants=self.morph_cfg
         )
-        
+                # [★ 2파트 완결: 토로이달 주기 공간 격리 및 0-Copy 무복사 최종 연동]
+        # blend_ratio = 1.0 (비상 진입, 토러스 진공 락 가동) 시점 이후 (기존 코드 연결 마감)
+        morphed = execute_modular_topological_morphing(
+            traffic_stream=self.mock_attack_stream,
+            blend_ratio=1.0,
+            constants=self.morph_cfg
+        )
+
         # 아무리 파괴적인 진폭(120.5)을 던져도 사인 주기 함수 공간 안에 갇혀 [-1.0, 1.0] 범위로 고정되는지 검증
         max_amplitude = np.max(np.abs(morphed))
         self.assertTrue(max_amplitude <= 1.00001)
+
+        # [★ 아키텍처 수호: 0-Copy 무복사 검증 라인 보강]
+        # 마스터 위상 천이 함수 내부에서 .reshape() 연산이 통째로 거세되었으므로,
+        # 출력된 morphed 배열의 원본 주소선 매핑 일치가 완벽히 성립하는지 확인합니다.
+        self.assertIs(morphed.base, self.mock_attack_stream)
 
 if __name__ == "__main__":
     unittest.main()
