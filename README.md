@@ -1,8 +1,14 @@
 ```directory
 homeostasis-ingress-firewall/
 ├── core-formula/
+│   ├── autograd_free.py
 │   ├── skewness_damper.py     # 순수 수리 코어 (왜도 소산 완충기)
 │   └── topology_morph.py      # 순수 수리 코어 (위상 천이 분할형 컴포넌트)
+│
+├── telemetry/
+│   ├── ring_buffer_monitor.rs        # 링 버퍼 스캔 및 덤프 엔진 (Rust)
+│   ├── hardware_shifter_telemetry.py # NVML/perf_event 파형 역공학 분석기 (Python)
+│   └── shadow_matrix_validator.py
 │
 ├── target-kernel-xdp/
 │   ├── xdp_ingress.c          # 커널 데이터 플레인 (C언어 eBPF/XDP)
