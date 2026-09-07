@@ -97,20 +97,20 @@
 
 ```directory
 homeostasis-ingress-firewall/
-├── core-formula/
+├── core_formula/
 │   ├── autograd_free.py          # 미분 노드 체인 거세 기반 O(1) 공간 고정 코어
 │   ├── skewness_damper.py        # 3차 모멘트 왜도 분산 점성 완충 수리 코어
 │   └── topology_morph.py         # 주기적 토러스 공간 임계 진폭 구속 위상 천이 코어
 │
-├── target-kernel-xdp/
+├── target_kernel_xdp/
 │   ├── xdp_ingress.c             # 커널 데이터 플레인 (C언어 eBPF/XDP 하단 드라이버)
 │   └── bitwise_mux.c             # JMP 조건 분기문 박멸 정수 비트 MUX 융합 레이어
 │
-├── target-hardware-cuda/
+├── target_hardware_cuda/
 │   ├── skewness_kernel.cu        # 공유 메모리 뱅크 충돌 박멸 및 단일 클록 fmaf 가속 커널
 │   └── schrodinger_filter.triton # 양자 저항 카시미르 노치 필터 구현 온칩 트리톤 커널
 │
-├── target-proxy-rust/
+├── target_proxy_rust/
 │   └── src/main.rs               # 소유권 기반 0ns 제로카피 중앙 통제 오케스트레이터 프록시
 │
 ├── telemetry/
