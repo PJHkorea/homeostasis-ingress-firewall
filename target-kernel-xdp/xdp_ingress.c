@@ -6,11 +6,13 @@
  * 리눅스 커널 최하단 NIC 드라이버 레벨에서 분기문 없이 정수 비트 스케일링으로 구현한 C 코어입니다.
  */
 
-#include <linux/bpf.h>
-#include <linux/in.h>
-#include <linux/if_ether.h>
-#include <linux/ip.h>
+/* 
+ * [CO-RE 주입] 기존 파편화된 표준 네트워크 헤더를 박멸하고 vmlinux.h 하나로 대체합니다.
+ * 이 헤더가 실행 타임에 타겟 OS의 커널 내부 구조체 메모리 오프셋을 동적으로 자동 재배치합니다.
+ */
+#include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_core_read.h>
 
 /* 
  * 32-Byte Hardware Bus Stride Alignment & Fixed-Point Scaling Matrix
@@ -19,6 +21,18 @@
 #define FIXED_ONE       65536
 #define VISCOSITY_ALPHA 3276   /* 0.05 스케일링 가중치 (0.05 * 65536) */
 #define SKEWNESS_FLOOR  -1310720 /* 수치 폭주 방지용 하한선 (-20.0 * 65536) */
+
+/*
+ * [★ 추가] telemetry/ring_buffer_monitor.rs 모듈과 원자적으로 비트 정렬 규격을 맞춘
+ * 32바이트 하드웨어 뱅크 스트라이드 정렬 텔레메트리 덤프 페이로드 구조체 정의
+ */
+struct telemetry_payload {
+    __u32 src_ip;
+    __s32 calculated_skewness;
+    __u32 current_gate_mask;
+    __u32 packet_bytes_len;
+    __u8 padding[16]; // 32-Byte Boundary 정렬을 위한 명시적 패딩 예약
+} __attribute__((aligned(32)));
 
 /*
  * Control Plane(JAX 분석 엔진)과 Data Plane(본 커널 방화벽)을 0ns로 연결하는 eBPF Maps
@@ -39,6 +53,15 @@ struct {
 } traffic_metric_map SEC(".maps");
 
 /*
+ * [★ 추가] 리눅스 커널 5.8 이상 지원 표준 고속 락프리 순환 버퍼 (Lock-Free Ring Buffer)
+ * 메인 핫 패스(Hot Path) 파이프라인 지연을 유발하는 동기식 로그 병목을 완전히 우회합니다.
+ */
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 16); // 64KB 단위 크래시 마진 버퍼 공간 동적 고정
+} telemetry_ringbuf SEC(".maps");
+
+/*
  * [Branchless Register-Level FMA Interlock Formula]
  * CPU 분기 예측 실패(Branch Misprediction) 지터를 박멸하기 위한 인라인 비트 마스크 대수 함수입니다.
  */
@@ -47,7 +70,7 @@ static __always_inline __u32 execute_branchless_gate_interlock(__u32 gate_mask, 
      * gate_mask가 1(비상 격리 상태)이면 0xFFFFFFFF, 0(정상)이면 0x00000000 비트 마스크 생성
      * 조건문(if-else)에 의한 JMP 명령어를 컴파일 타임에 원천 제거하여 1클록 하드웨어 연산을 강제합니다.
      */
-    __u32 mask = -gate_mask;
+    __s32 mask = -(__s32)gate_mask;
     return (normal_path & ~mask) | (drop_path & mask);
 }
 
@@ -61,6 +84,7 @@ int xdp_ingress_homeostasis_filter(struct xdp_md *ctx) {
     if ((void *)(eth + 1) > data_end)
         return XDP_PASS;
 
+    /* CO-RE의 상호 호환성을 수호하기 위해 리눅스 표준 프로토콜 바인딩 레일 정렬 */
     if (eth->h_proto != __constant_htons(ETH_P_IP))
         return XDP_PASS;
 
@@ -107,6 +131,21 @@ int xdp_ingress_homeostasis_filter(struct xdp_md *ctx) {
     __u32 final_isolation_mask = active_gate | is_anomaly_burst;
 
     /*
+     * [★ 연동 추가: Asynchronous Ring-Buffer Telemetry Pipeline]
+     * 메인 연산 트랙을 정지시키지 않고, 락프리 순환 버퍼 주소 공간에 출력 상태를 0ns로 기부합니다.
+     */
+    struct telemetry_payload *log = bpf_ringbuf_reserve(&telemetry_ringbuf, sizeof(*log), 0);
+    if (log) { // eBPF Verifier의 정적 Null 포인터 크래시 검증 가드 통과
+        log->src_ip = src_ip;
+        log->calculated_skewness = (__s32)damped_signal;
+        log->current_gate_mask = final_isolation_mask;
+        log->packet_bytes_len = (__u32)__constant_ntohs(iph->tot_len);
+        
+        // 데이터 슬롯을 백그라운드 Rust 모니터 데몬으로 인라인 즉시 투척
+        bpf_ringbuf_submit(log, 0);
+    }
+
+    /*
      * [1-Cycle In-Line Machine-Code Elimination]
      * 최종 마스크 결과에 따라 분기문(if) 없이 패킷 처리 액션을 결정합니다.
      * 정상 위상(0)일 경우 XDP_PASS, 토로이달 격리 위상(1)일 경우 가속기 1클록 만에 기계어로 증발(XDP_DROP).
@@ -116,4 +155,5 @@ int xdp_ingress_homeostasis_filter(struct xdp_md *ctx) {
     return action;
 }
 
+/* CO-RE 런타임 재배치 및 GPL 배포 규격을 수호하기 위한 정적 섹션 마킹 */
 char _license[] SEC("license") = "GPL";
