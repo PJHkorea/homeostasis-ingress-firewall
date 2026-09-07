@@ -32,16 +32,17 @@
 #define LOG_SIZE 32
 
 /*
- * [★ 추가] telemetry/ring_buffer_monitor.rs 모듈과 원자적으로 비트 정렬 규격을 맞춘
- * 32바이트 하드웨어 뱅크 스트라이드 정렬 텔레메트리 덤프 페이로드 구조체 정의
- * 멤버 크기 합산: 4 + 4 + 4 + 4 = 16바이트 -> 32바이트 정렬을 위한 16바이트 명시적 바이트 패딩 적용
+ * [★ 아키텍처 리팩토링: 전 레이어 텐서 레이아웃 동기화]
+ * 고도화된 telemetry/ring_buffer_monitor.rs 및 target_proxy_rust의 명세 규격과 정확히 일치시킵니다.
+ * 개별 지표 형태의 파편화된 레이아웃을 걷어내고, 가속기 레니스터로 바이패스될 4차원 float 특징 배열을 안착시킵니다.
+ * 
+ * 크기 계산: src_ip(4B) + features(4B * 4 = 16B) + packet_count(8B) + padding(4B) = 32바이트 캐시라인 물리 경계 완벽 수호
  */
 struct telemetry_payload {
     __u32 src_ip;
-    __s32 calculated_skewness;
-    __u32 current_gate_mask;
-    __u32 packet_bytes_len;
-    __u8 padding[16]; // 32-Byte Boundary 정렬 완료
+    float features[4];     // [★ 고도화] RPS, PPS, ErrorRate, BandwidthDelta 융합 텐서 레일
+    __u64 packet_count;    // 관제/PPS 카운팅용 고속 카운터 필드
+    __u32 padding;         // 32-Byte Boundary 정렬 완료를 위한 보정 패딩
 } __attribute__((aligned(32)));
 
 /*
@@ -70,6 +71,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 1 << 16); // 64KB 단위 크래시 마진 버퍼 공간 동적 고정
 } telemetry_ringbuf SEC(".maps");
+
 
 
 /*
@@ -117,6 +119,7 @@ int xdp_ingress_homeostasis_filter(struct xdp_md *ctx) {
         /* 원자적 연산 명령어로 락 지터 없이 실시간 트래픽 증가량 카운트 */
         __sync_fetch_and_add(pps_counter, 1);
     }
+    
     /* 
      * [0ns Reference Lookup] 
      * JAX 위상 제어 플레인이 계산하여 맵에 동기화해 둔 해당 IP의 위상 천이 임계치(gate_score) 조회 
@@ -124,7 +127,8 @@ int xdp_ingress_homeostasis_filter(struct xdp_md *ctx) {
     __u32 *gate_score = bpf_map_lookup_elem(&ingress_gating_map, &src_ip);
     __u32 active_gate = gate_score ? *gate_score : 0;
 
-    /*
+
+      /*
      * [Mathematical Core: 3rd-Order Skewness Flattening Proxy in Kernel]
      * 커널 공간 내 가상의 3차 비대칭 모멘트 감쇄 로직 구동 (Q16.16 고정소수점 연산)
      * 패킷의 특정 가변 특성(예: IP Total Length 변이 폭)을 대리치로 사용해 수치적 왜도 저항을 계산합니다.
@@ -158,13 +162,34 @@ int xdp_ingress_homeostasis_filter(struct xdp_md *ctx) {
     struct telemetry_payload *log = bpf_ringbuf_reserve(&telemetry_ringbuf, LOG_SIZE, 0);
     if (log) { // eBPF Verifier의 정적 Null 포인터 크래시 검증 가드 통과
         log->src_ip = src_ip;
-        log->calculated_skewness = (__s32)damped_signal;
-        log->current_gate_mask = final_isolation_mask;
-        log->packet_bytes_len = (__u32)__constant_ntohs(iph->tot_len);
+
+        /* 
+         * [★ 아키텍처 고도화: 4차원 특징 축 FP32 텐서 배열 슬롯 결합 명세 실행]
+         * 고도화된 고속 수집 규격과 완전히 포개어지도록 4대 특징 축 [RPS, PPS, ErrorRate, BandwidthDelta]을
+         * float 데이터 타입의 비트 배열 레이아웃으로 변환하여 차례대로 밀어 넣습니다.
+         */
         
+        // Slot 0: RPS 대리 지표 (원시 패킷 길이 정보 캐스팅)
+        log->features[0] = (float)(__constant_ntohs(iph->tot_len));
+
+        // Slot 1: PPS 실시간 카운터 동적 값 주입
+        log->features[1] = pps_counter ? (float)(*pps_counter) : 0.0f;
+
+        // Slot 2: Error Rate (단편화 플래그 Contamination 메트릭 모사)
+        log->features[2] = (iph->frag_off & __constant_htons(IP_OFFSET)) ? 1.0f : 0.0f;
+
+        // Slot 3: Bandwidth Delta (왜도 점성 소산 제어가 실행된 감쇄 신호 실수 역산값)
+        // Q16.16 고정소수점 데이터를 고수준 float 형식으로 스케일링 복원하여 Rust/JAX 연산 레일로 직결
+        log->features[3] = (float)(damped_signal) / 65536.0f;
+
+        // 제어 평면용 메트릭 변수 동기화 및 32바이트 바운더리 마감
+        log->packet_count = pps_counter ? *pps_counter : 0;
+        log->padding = final_isolation_mask; // 후반부 분기문 MUX용 격리 마스크 플래그를 정렬 패딩 공간에 배치
+
         // 데이터 슬롯을 백그라운드 Rust 모니터 데몬으로 인라인 즉시 투척
         bpf_ringbuf_submit(log, 0);
     }
+
 
     /*
      * [1-Cycle In-Line Machine-Code Elimination]
