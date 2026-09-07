@@ -14,8 +14,8 @@ tokio = { version = "1.38", features = ["full"] }
 libbpf-rs = "0.22"
 
 [build-dependencies]
-# [★ 추가: CUDA FFI 정적 빌드 자동화 링크 인터록]
-# build.rs 내부에서 target-hardware-cuda/skewness_kernel.cu 소스를 nvcc로 자동 컴파일하기 위한 빌드 스크립트 레일
+# [★ 구조 명세 동기화: CUDA FFI 정적 빌드 자동화 링크 인터록]
+# build.rs 내부에서 target_hardware_cuda/skewness_kernel.cu 소스를 nvcc로 자동 컴파일하기 위한 빌드 스크립트 레일
 cc = "1.0"
 
 [profile.release]
