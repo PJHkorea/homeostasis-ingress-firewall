@@ -12,11 +12,11 @@ CARGO := cargo
 PYTHON := python3
 BPFTOOL := bpftool
 
-# 출력 디렉토리 및 소스 래티스 경로 지정
+# [★ 구조 명세 동기화] 출력 디렉토리 및 소스 래티스 경로의 하이픈을 언더바로 변환
 BUILD_DIR := ./build
-XDP_SRC_DIR := ./target-kernel-xdp
-RUST_SRC_DIR := ./target-proxy-rust
-HARDWARE_DIR := ./target-hardware-cuda
+XDP_SRC_DIR := ./target_kernel_xdp
+RUST_SRC_DIR := ./target_proxy_rust
+HARDWARE_DIR := ./target_hardware_cuda
 
 # [★ CO-RE 핵심 주입] 실시간 시스템 구조체 추출을 위한 vmlinux.h 타겟 정의
 VMLINUX_H := $(XDP_SRC_DIR)/vmlinux.h
@@ -64,7 +64,7 @@ bitwise_mux: $(XDP_SRC_DIR)/bitwise_mux.c $(VMLINUX_H)
 	$(CC) $(BPF_CFLAGS) -c $< -o $(BUILD_DIR)/bitwise_mux.o
 
 # 3. 고성능 0ns 제로카피 오케스트레이터 프록시 컴파일 (AGPLv3 영역)
-# build.rs 내부에서 target-hardware-cuda/skewness_kernel.cu 소스를 nvcc 최적화 플래그와 함께 결합합니다.
+# [★ 구조 명세 동기화] build.rs 내부에서 target_hardware_cuda/skewness_kernel.cu 소스를 nvcc 최적화 플래그와 함께 결합합니다.
 .PHONY: rust_proxy
 rust_proxy:
 	@echo "🦀 [BUILD] Packing and Compiling High-Performance Rust Master Hub (AGPLv3)..."
