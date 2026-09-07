@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2021"
 authors = ["PJHkorea <pjh_korea@example.com>"]
 description = "5th-Gen Pure Ingress Hardware Control Orchestrator Hub"
-# 전체 코드 공개 및 대기업 가로채기 방어를 위한 AGPLv3 명시
+# 전체 코드 공개 및 빅테크 상용 무단 도용 방지를 위한 AGPLv3 라이선스 명시
 license = "AGPL-3.0-only"
 
 [dependencies]
@@ -15,7 +15,7 @@ tokio = { version = "1.38", features = ["full"] }
 libbpf-rs = "0.22"
 
 [profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
+opt-level = 3           # 하드웨어 레지스터 파이프라인 연산 레벨 최대 압축 최적화 (O3)
+lto = true              # 링킹 타임 전역 최적화를 통한 죽은 코드(Dead Code) 제거 가동
+codegen-units = 1       # 컴파일러 스레드를 단일화하여 코드 블록 최적화 병합 효율 극대화
+panic = "abort"         # 스택 언와인딩(Unwinding) 트래킹을 영구 거세하여 패닉 지터 0% 수호
