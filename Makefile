@@ -64,6 +64,7 @@ bitwise_mux: $(XDP_SRC_DIR)/bitwise_mux.c $(VMLINUX_H)
 	$(CC) $(BPF_CFLAGS) -c $< -o $(BUILD_DIR)/bitwise_mux.o
 
 # 3. 고성능 0ns 제로카피 오케스트레이터 프록시 컴파일 (AGPLv3 영역)
+# build.rs 내부에서 target-hardware-cuda/skewness_kernel.cu 소스를 nvcc 최적화 플래그와 함께 결합합니다.
 .PHONY: rust_proxy
 rust_proxy:
 	@echo "🦀 [BUILD] Packing and Compiling High-Performance Rust Master Hub (AGPLv3)..."
@@ -74,7 +75,9 @@ rust_proxy:
 .PHONY: test
 test:
 	@echo "🧪 [INTEGRITY-TEST] Initiating Pure Functional Mathematical Sandbox Verification..."
-	$(PYTHON) -m unittest discover -s tests -p "test_*.py"
+	# [★ 보정 완료: PYTHONPATH=. 환경 변수 주입]
+	# 최상위 루트 디렉토리에서도 core_formula 하위 수식 패키지를 정확히 스캔하여 ModuleNotFoundError를 원천 방어합니다.
+	PYTHONPATH=. $(PYTHON) -m unittest discover -s tests -p "test_*.py"
 
 # 5. 빌드 사본 및 임시 컴파일 오브젝트 클린 오퍼레이션
 .PHONY: clean
@@ -83,5 +86,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 	rm -f $(VMLINUX_H)
 	@cd $(RUST_SRC_DIR) && $(CARGO) clean
+	# [★ 보정 완료: Triton 가속 커널 런타임 캐시 완전 퍼지]
+	# 양자 장벽 수식(spy_mask) 개조에 따른 SASS 컴파일러 구버전 바이너리 오버랩 캐시 지터를 제거합니다.
+	rm -rf ~/.triton/cache
 	@echo "✨ Clean operation finished completely."
-
