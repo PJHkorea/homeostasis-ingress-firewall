@@ -71,31 +71,34 @@
 ```directory
 homeostasis-ingress-firewall/
 ├── core-formula/
-│   ├── autograd_free.py
-│   ├── skewness_damper.py     # 순수 수리 코어 (왜도 소산 완충기)
-│   └── topology_morph.py      # 순수 수리 코어 (위상 천이 분할형 컴포넌트)
-│
-├── telemetry/
-│   ├── ring_buffer_monitor.rs        # 링 버퍼 스캔 및 덤프 엔진 (Rust)
-│   ├── hardware_shifter_telemetry.py # NVML/perf_event 파형 역공학 분석기 (Python)
-│   └── shadow_matrix_validator.py
+│   ├── autograd_free.py          # 미분 노드 체인 거세 기반 O(1) 공간 고정 코어
+│   ├── skewness_damper.py        # 3차 모멘트 왜도 분산 점성 완충 수리 코어
+│   └── topology_morph.py         # 주기적 토러스 공간 임계 진폭 구속 위상 천이 코어
 │
 ├── target-kernel-xdp/
-│   ├── xdp_ingress.c          # 커널 데이터 플레인 (C언어 eBPF/XDP)
-│   └── bitwise_mux.c          # 분기문 박멸 기계어 MUX 융합 레이어
+│   ├── xdp_ingress.c             # 커널 데이터 플레인 (C언어 eBPF/XDP 하단 드라이버)
+│   └── bitwise_mux.c             # JMP 조건 분기문 박멸 정수 비트 MUX 융합 레이어
 │
 ├── target-hardware-cuda/
-│   ├── skewness_kernel.cu     # 가속기 SRAM 레지스터 단축 코어 (CUDA C++)
-│   └── schrodinger_filter.triton # 온칩 캐시라인 쥐어짜기 (OpenAI Triton 언어)
+│   ├── skewness_kernel.cu        # 공유 메모리 뱅크 충돌 박멸 및 단일 클록 fmaf 가속 커널
+│   └── schrodinger_filter.triton # 양자 저항 카시미르 노치 필터 구현 온칩 트리톤 커널
 │
 ├── target-proxy-rust/
-│   └── src/main.rs            # 소유권 기반 0ns 제로카피 오케스트레이터 프록시 (Rust)
+│   └── src/main.rs               # 소유권 기반 0ns 제로카피 중앙 통제 오케스트레이터 프록시
+│
+├── telemetry/
+│   ├── ring_buffer_monitor.rs    # repr(C, align(32)) 무복사 커널 로그 하이재킹 모니터
+│   ├── hardware_shifter_telemetry.py # NVML 역공학 기반 전력 파형 경사도(Gradient) 분석기
+│   └── shadow_matrix_validator.py # 공분산 행렬식 결정값 추적 기반 위상 붕괴 감지기
 │
 ├── adapters/
-│   └── api_adapter.py         # [★추가] 대규모 API 트래픽 워크로드 텐서화 어댑터
+│   └── api_adapter.py            # [★확장] 대규모 API 트래픽 워크로드의 No-Copy 텐서화 어댑터
 │
-└── tests/
-    └── test_homeostasis_core.py # [★추가] 수리 물리 무결성 샌드박스 유닛 테스트
+├── tests/
+│   └── test_homeostasis_core.py  # [★확장] 수리·물리 무결성 검증을 위한 샌드박스 유닛 테스트
+│
+└── build.rs                      # NVIDIA NVCC 컴파일러 최적화 파이프라인 정적 링크 스크립트
+
 
 ```
 
