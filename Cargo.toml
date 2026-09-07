@@ -4,7 +4,6 @@ version = "1.0.0"
 edition = "2021"
 authors = ["PJHkorea <pjh_korea@example.com>"]
 description = "5th-Gen Pure Ingress Hardware Control Orchestrator Hub"
-# 전체 코드 공개 및 빅테크 상용 무단 도용 방지를 위한 AGPLv3 라이선스 명시
 license = "AGPL-3.0-only"
 
 [dependencies]
@@ -13,6 +12,11 @@ tokio = { version = "1.38", features = ["full"] }
 
 # eBPF/XDP 커널 맵 제어 및 공유 메모리 바인딩 핵심 라이브러리
 libbpf-rs = "0.22"
+
+[build-dependencies]
+# [★ 추가: CUDA FFI 정적 빌드 자동화 링크 인터록]
+# build.rs 내부에서 target-hardware-cuda/skewness_kernel.cu 소스를 nvcc로 자동 컴파일하기 위한 빌드 스크립트 레일
+cc = "1.0"
 
 [profile.release]
 opt-level = 3           # 하드웨어 레지스터 파이프라인 연산 레벨 최대 압축 최적화 (O3)
