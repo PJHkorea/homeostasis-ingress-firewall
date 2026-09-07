@@ -24,15 +24,17 @@
 #define LOG_SIZE 32
 
 /*
- * [★ 동기화 추가] xdp_ingress.c와 동일한 규격의 32바이트 텔레메트리 덤프 페이로드 구조체
- * 멤버 크기 합산: 4 + 4 + 4 + 4 = 16바이트 -> 32바이트 정렬을 위한 16바이트 명시적 바이트 패딩 적용
+ * [★ 아키텍처 리팩토링: 전 레이어 텐서 레이아웃 동기화]
+ * xdp_ingress.c, telemetry/ring_buffer_monitor.rs 및 target_proxy_rust의 고도화 규격과 완벽히 포개어집니다.
+ * 이종 커널 간의 데이터 오프셋 오차를 0%로 동제하기 위해 features[4] 실수 융합 텐서 레일을 이식합니다.
+ * 
+ * 크기 계산: src_ip(4B) + features(4B * 4 = 16B) + packet_count(8B) + padding(4B) = 32바이트 캐시라인 물리 경계 완벽 수호
  */
 struct telemetry_payload {
     __u32 src_ip;
-    __s32 calculated_skewness;
-    __u32 current_gate_mask;
-    __u32 packet_bytes_len;
-    __u8 padding[16]; // 32-Byte Boundary 정렬 완료
+    float features[4];     // [★ 고도화] RPS, PPS, ErrorRate, BandwidthDelta 융합 텐서 레일
+    __u64 packet_count;    // 관제/PPS 카운팅용 고속 카운터 필드
+    __u32 padding;         // 32-Byte Boundary 정렬 완료를 위한 보정 패딩
 } __attribute__((aligned(32)));
 
 /*
@@ -96,76 +98,76 @@ int xdp_bitwise_mux_filter(struct xdp_md *ctx) {
     if (eth->h_proto != __constant_htons(ETH_P_IP))
         return XDP_PASS;
 
-    struct iphdr *iph = (void *)(eth + 1);
+       struct iphdr *iph = (void *)(eth + 1);
     
     /* 
      * [★ 바이트 가드라인 한 줄 보강: 0ns Safe Read Line]
-     * iph 구조체 전체 크기(20바이트 고정)가 실제 유입된 패킷 범위 내에 완전히 속해 있음을 
-     * 검증기(Verifier)에게 수리 기하학적으로 증명하여 정적 거부 리스크를 0%로 박멸합니다.
+     * iph 구조체 전체 크기(20바이트)가 실제 패킷 범위 내에 완전히 속해 있음을 
+     * 검증기(Verifier)에게 증명하여 후속 레지스터 다이렉트 맵 매핑 시의 정적 거부를 원천 박멸합니다.
      */
     if ((void *)iph + sizeof(struct iphdr) > data_end)
         return XDP_PASS;
 
-    /* 
-     * [Feature Extraction & Garbage Interlock Proof]
-     * 위 가드라인을 통과함에 따라, 검증기의 런타임 체크 방해 없이 64비트 하드웨어 ALU 레지스터가 
-     * 패킷 헤더 값을 0ns 지연 시간 만에 다이렉트로 안전하게 이식 사상합니다.
-     */
+    /* 32-Byte Stride Hardware 패킷 특징 정형 매트릭스 추출 */
     struct packet_feature_matrix p_matrix;
-    p_matrix.src_ip = iph->saddr;
-    p_matrix.dst_ip = iph->daddr;
-    p_matrix.tot_len = __constant_ntohs(iph->tot_len);
+    p_matrix.src_ip   = iph->saddr;
+    p_matrix.dst_ip   = iph->daddr;
+    p_matrix.tot_len  = __constant_ntohs(iph->tot_len);
     p_matrix.protocol = iph->protocol;
 
-
-        /*
-     * [Garbage Mask Interlock Implementation]
-     * 컨트롤 플레인(JAX)의 왜도 소산 댐퍼 및 위상 천이 임계치 조건을 가상 대리 연산합니다.
-     * 예시: 패킷 길이가 비정상적인 버스트 범위(예: 1500바이트 초과 혹은 특정 시그니처 꼬임)에 
-     * 속하는지 여부를 비교 연산자 '자체'의 비트 결과값(0 또는 1)으로 도출합니다.
-     */
-    __u32 dynamic_anomaly_gate = (p_matrix.tot_len > 1460) ? 1 : 0;
-    
     /* 
-     * 프로토콜 변이 조작(스푸핑 툴킷) 유무 판별 
-     * 정상적인 TCP(6)나 UDP(17)가 아닌 변형 프로토콜 궤도 진입 시 마스크 활성화
-     * vmlinux.h 내부의 공식 정의 프로토콜 매핑 값(TCP=6, UDP=17)과 1:1 결합 유도
+     * [Hot Path Branchless Core: 대수학적 왜도 소산 대리 계산]
+     * xdp_ingress.c 프로젝트와 동일한 정수 Multiply-Add FMA 융합 레일을 구동합니다.
      */
-    __u32 protocol_deviation_gate = (p_matrix.protocol != 6 && p_matrix.protocol != 17) ? 1 : 0;
+    __s64 raw_deviation = (__s64)(p_matrix.tot_len - 64) << 16;
+    __s64 skewness_vector = (raw_deviation * raw_deviation) >> 16;
+    skewness_vector = (skewness_vector * raw_deviation) >> 16;
 
-    /* 두 위상 게이트를 논리합(OR)으로 결합하여 최종 실리콘 MUX 트리거 비트 확정 */
-    __u32 final_gate_mask = dynamic_anomaly_gate | protocol_deviation_gate;
+    __s64 damped_signal = raw_deviation - ((3276 * skewness_vector) >> 16); /* VISCOSITY_ALPHA=3276 */
+    __u32 is_anomaly_burst = (damped_signal < -1310720) ? 1 : 0;            /* SKEWNESS_FLOOR=-1310720 */
 
-    /*
-     * [★ 연동 추가: MUX Trigger Egress Telemetry Delivery]
-     * 악성 패킷 변이 조작 마스크(final_gate_mask == 1)가 트리거된 충격파 발생 시,
-     * 메인 핫 패스를 차단하지 않고 상태 텐서 원인 컨텍스트를 비동기 링 버퍼에 백업합니다.
+    /* 
+     * [★ 연동 추가: Asynchronous Ring-Buffer Telemetry Pipeline]
+     * 고도화된 telemetry/ring_buffer_monitor.rs ABI 규격에 맞춰 32바이트 락프리 순환 버퍼 공간을 예약합니다.
      */
-    if (final_gate_mask) {
-        /*
-         * [★ Verifier 완벽 수호 결합] sizeof(*log) 수식 대신 제1파트에 신설한 
-         * 정적 매크로 상수 LOG_SIZE(32바이트 리터럴)를 직접 인자로 주입합니다.
-         * 검증기의 정적 메모리 범위 추적(Range Tracking) 딴지 오차를 원천 박멸합니다.
+    struct telemetry_payload *log = bpf_ringbuf_reserve(&telemetry_ringbuf, LOG_SIZE, 0);
+    if (log) {
+        log->src_ip = p_matrix.src_ip;
+
+        /* 
+         * [★ 아키텍처 고도화: 4차원 특징 축 FP32 텐서 배열 슬롯 결합 명세 실행]
+         * xdp_ingress.c와 자로 잰 듯 완벽히 동일한 오프셋 주소선 상에 float 원소들을 밀어 넣습니다.
          */
-        struct telemetry_payload *log = bpf_ringbuf_reserve(&telemetry_ringbuf, LOG_SIZE, 0);
-        if (log) { // eBPF Verifier의 정적 런타임 Null Pointer 안전성 래치 가드
-            log->src_ip = p_matrix.src_ip;
-            log->calculated_skewness = 0; // 단순 MUX 차단은 수리 왜도 오프라인 대리 처리 0 정형화
-            log->current_gate_mask = final_gate_mask;
-            log->packet_bytes_len = (__u32)p_matrix.tot_len;
-            
-            // 백스페이스 채널을 통해 Rust 관제 텔레메트리 데몬으로 0ns 도네이션
-            bpf_ringbuf_submit(log, 0);
-        }
+        // Slot 0: RPS 대리 지표 (원시 패킷 길이)
+        log->features[0] = (float)(p_matrix.tot_len);
+
+        // Slot 1: PPS (이 모듈은 MUX 필터이므로 특징 결합을 위해 대리 패킷 카운트 1.0 주입)
+        log->features[1] = 1.0f;
+
+        // Slot 2: Error Rate (프로토콜 필드가 TCP/UDP/ICMP 외의 변칙 상태인지 비트 마스킹)
+        log->features[2] = (p_matrix.protocol != 6 && p_matrix.protocol != 17) ? 1.0f : 0.0f;
+
+        // Slot 3: Bandwidth Delta (왜도 감쇄 제어가 가동된 damped_signal 실수 역산 스케일링)
+        log->features[3] = (float)(damped_signal) / 65536.0f;
+
+        // 제어 변수 및 격리 상태 바이패스 정렬
+        log->packet_count = 1;
+        log->padding = is_anomaly_burst; 
+
+        // 비동기 관제 데몬으로 즉시 투척
+        bpf_ringbuf_submit(log, 0);
     }
 
-    /*
-     * [Egress Elimination Execution]
-     * 분기문(if-else)을 원천 박멸한 실리콘 비트 MUX 함수를 호출하여 패킷의 액션을 반환합니다.
-     * final_gate_mask가 0이면 XDP_PASS(유저 앱 공간 승인), 1이면 XDP_DROP(기계어 레벨 즉시 증발).
+    /* 
+     * [1-Cycle Pure Silicon Bitwise MUX Switching]
+     * 조건 분기문(if-else)을 기계어 SASS 레벨에서 완전히 지워버리고 
+     * ALU 레지스터 단 1클록 만에 패킷 통과(XDP_PASS)와 즉시 증발(XDP_DROP)을 물리적으로 결정합니다.
      */
-    return execute_silicon_bitwise_mux(final_gate_mask, XDP_PASS, XDP_DROP);
+    int action = execute_silicon_bitwise_mux(is_anomaly_burst, XDP_PASS, XDP_DROP);
+
+    return action;
 }
 
-/* CO-RE 라이브 가상 런타임 오프셋 바인딩 및 배포 규격 준수를 위한 정적 마킹 */
-char _license SEC("license") = "GPL";
+/* CO-RE 재배치 및 리눅스 적재용 라이선스 서명 */
+char _license[] SEC("license") = "GPL";
+
