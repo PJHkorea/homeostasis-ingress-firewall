@@ -1,3 +1,4 @@
+```directory
 homeostasis-ingress-firewall/
 ├── core-formula/
 │   ├── skewness_damper.py     # 순수 수리 코어 (왜도 소산 완충기)
@@ -19,5 +20,7 @@ homeostasis-ingress-firewall/
 │
 └── tests/
     └── test_homeostasis_core.py # [★추가] 수리 물리 무결성 샌드박스 유닛 테스트
-    
+
+```
+
 인프라 입구에서 비정상 패킷을 기계어 레벨로 무력화 + 내부 연산 자원을 정적 O(1) 공간 복잡도로 통제, 오토스케일링 없이 생존하는 방화벽 인프라 poc
