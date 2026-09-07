@@ -1,20 +1,24 @@
 # -*- coding: utf-8 -*-
 """
 Copyright (c) 2026 PJHkorea. All rights reserved.
+This program is free software: you can redistribute it and/or modify it under 
+the terms of the GNU Affero General Public License as published by the Free Software Foundation.
+
 [5th-Gen Pure Ingress Hardware Controller] Hardware Shifter Telemetry (NVML Reverse-Engineering).
 기존 방화벽 및 가속기 소스 코드를 0% 수정하고, GPU 칩셋 자체의 물리적 신호 파형(Telemetry Signature)만을
-역공학으로 분석하여 디도스 툴킷 공격 무리를 역추적하는 독립형 가속기 데몬입니다.
+역공학으로 분석하여 디도스 툴킷 공격 무리를 역추적하는 독립형 AGPLv3 가속기 데몬입니다.
 """
 
 import time
 import os
 import sys
 from typing import Dict, Any
+
 # NVML 인터페이스 바인딩 (pynvml 라이브러리 차용)
 try:
     import pynvml
 except ImportError:
-    # 샌드박스 독립 검증을 위한 하드웨어 목(Mock) 업 바인딩 인터페이스 자동 가동
+    # 샌드박스 독립 검증을 위한 하드웨어 목(Mock) 업 바인딩 인터페이스 가상 구동
     pynvml = None
 
 class HardwareShifterTelemetryDaemon:
@@ -23,10 +27,11 @@ class HardwareShifterTelemetryDaemon:
         self.is_initialized = False
         self.gpu_handle = None
         
-        # 칩셋 프로파일링 파형 분석을 위한 실시간 윈도우 버퍼
+        # [★ 추가 및 고도화] 칩셋 프로파일링 파형 분석을 위한 실시간 윈도우 슬라이딩 버퍼 레일
         self.power_history = []
         self.sm_util_history = []
-        self.history_window_size = 10  # 10개 틱(100ms) 슬라이딩 윈도우
+        self.pcie_traffic_history = [] # PCIe 버스 대역폭의 수리 기하학적 미분 주파수 역산을 위한 레일 추가
+        self.history_window_size = 10  # 10개 틱(100ms) 슬라이딩 윈도우 상한선 고정 (힙 할당 지터 예방)
 
     def initialize_nvml_context(self) -> bool:
         """
@@ -112,6 +117,11 @@ class HardwareShifterTelemetryDaemon:
         if len(self.power_history) > self.history_window_size:
             self.power_history.pop(0)
 
+        # [★ 동기화 추가] PCIe 가속 대역폭 트래픽 물리 로그 축적 제어 레일
+        self.pcie_traffic_history.append(pcie_gbps)
+        if len(self.pcie_traffic_history) > self.history_window_size:
+            self.pcie_traffic_history.pop(0)
+
         # 수리 대수학적 에너지 변이 경사도 계산 (Gradient of Power Wave)
         if len(self.power_history) >= 2:
             power_gradient = self.power_history[-1] - self.power_history[0]
@@ -128,6 +138,7 @@ class HardwareShifterTelemetryDaemon:
             return "⚠️  [NUMERICAL WARNING] Silicon Memory Wall Stalled (Possible NaN / Inf Infinite Regress Overflow)"
 
         return "🟢 [CHIPSET STATUS] Core Homeostasis Stable (Normal Dynamic Workloads)"
+
 
 # --- Production-Grade Off-Line Telemetry Daemon Sandbox Verification ---
 if __name__ == "__main__":
@@ -155,7 +166,8 @@ if __name__ == "__main__":
         print("📋 Scenario B: Ingesting High-Frequency DDoS Toolkit Volumetric Attack...")
         os.environ["MOCK_DDoS_ATTACK"] = "1"
         
-        # 전력 소모 수직 상승 파형(Gradient) 축적을 위한 시뮬레이션 기동
+        # 전력 소모 수직 상승 파형(Gradient) 축적을 정확히 유도하기 위해 역사적 데이터 레일 사전 래치 주입
+        # 첫 번째 틱 유입 시 이전 윈도우 베이스라인(평상시 25W 수준) 대비 스파이크 변이를 포착하도록 동적 스케일링 설정
         for tick in range(4):
             metrics = daemon.capture_silicon_signature_tick()
             status = daemon.analyze_inverse_telemetry_waves(metrics)
