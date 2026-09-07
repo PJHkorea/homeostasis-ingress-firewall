@@ -1,0 +1,21 @@
+[package]
+name = "homeostasis-ingress-proxy"
+version = "1.0.0"
+edition = "2021"
+authors = ["PJHkorea <pjh_korea@example.com>"]
+description = "5th-Gen Pure Ingress Hardware Control Orchestrator Hub"
+# 전체 코드 공개 및 대기업 가로채기 방어를 위한 AGPLv3 명시
+license = "AGPL-3.0-only"
+
+[dependencies]
+# 비동기 멀티스레딩 및 고속 네트워크 폴링 코어
+tokio = { version = "1.38", features = ["full"] }
+
+# eBPF/XDP 커널 맵 제어 및 공유 메모리 바인딩 핵심 라이브러리
+libbpf-rs = "0.22"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
