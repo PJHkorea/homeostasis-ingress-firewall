@@ -32,8 +32,18 @@ __global__ void execute_hardware_skewness_flattening(
     __shared__ float s_matrix[ALIGNED_STRIDE];
     __shared__ float s_squared_matrix[ALIGNED_STRIDE];
 
+    /* 
+     * [★ 추가: Warp-to-Warp Reduction Buffer]
+     * SPATIAL_DIM=128 환경에서 4개의 워프가 연산한 개별 부분합을 
+     * 최종 블록 레벨 합산(128 스레드 통합)으로 연계하기 위한 독립 온칩 SRAM 레일 구축
+     */
+    __shared__ float s_warp_sum[4];
+    __shared__ float s_warp_squared_sum[4];
+
     const int batch_idx = blockIdx.x;
     const int tid = threadIdx.x;
+    const int warp_id = tid / 32;  // 현재 스레드가 속한 워프 ID (0~3)
+    const int lane_id = tid % 32;  // 워프 내부의 고유 레인 ID (0~31)
 
     // 가속기 스레드 바운더리 체크 및 데이터 온칩 SRAM 고속 이식
     if (batch_idx >= batch_size || tid >= SPATIAL_DIM) return;
@@ -43,34 +53,62 @@ __global__ void execute_hardware_skewness_flattening(
     float raw_val = d_traffic_stream[global_offset];
     
     s_matrix[tid] = raw_val;
-    s_matrix[tid] = raw_val * raw_val; // 단일 클록 내 제곱합 파이프라인 형성
+    /* [★ 버그 수정] 기존 s_matrix 중복 덮어쓰기 오타를 d_squared_matrix 레일로 정상 분리 */
+    s_squared_matrix[tid] = raw_val * raw_val; 
     __syncthreads(); // 블록 내 전 스레드 메모리 정렬 가드
 
     // 2. Parallel Warp Reduction (Warp-Level Shuffling Primitives)
     // 부수적인 분기문 루프 없이 하드웨어 레지스터 단에서 공유 메모리 데이터를 집약 가산합니다.
     float local_sum = s_matrix[tid];
-    float local_squared_sum = s_matrix[tid];
+    /* [★ 버그 수정] 제곱합 연산 레일의 소스 주소를 s_squared_matrix로 정상 정렬 */
+    float local_squared_sum = s_squared_matrix[tid];
 
     // Warp-level 32스레드 섀도우 축소 (분기 예측 실패 지터 0%)
+    // 이 루프를 통과하면 각 워프의 0번 레인(lane_id == 0)에 32개 스레드의 부분합이 남습니다.
     for (int offset = 16; offset > 0; offset /= 2) {
         local_sum += __shfl_down_sync(0xFFFFFFFF, local_sum, offset);
         local_squared_sum += __shfl_down_sync(0xFFFFFFFF, local_squared_sum, offset);
     }
 
+
+      /*
+     * [★ 하드웨어 로직 보정] Warp-Level Shuffle 직후 단계 연산 전개.
+     * 각 워프의 0번 레인(lane_id == 0)들이 구한 부분합을 온칩 공유 메모리 배열에 격리 적재합니다.
+     */
+    if (lane_id == 0) {
+        s_warp_sum[warp_id] = local_sum;
+        s_warp_squared_sum[warp_id] = local_squared_sum;
+    }
+    __syncthreads(); // 모든 워프의 부분합이 공유 메모리에 백업될 때까지 가속기 블록 가드
+
     // 각 워프의 0번 대표 스레드가 블록 통계 임계값 확정 후 다시 전체 스레드로 브로드캐스트 수행
     __shared__ float block_mean;
     __shared__ float block_reciprocal_std;
 
+    /*
+     * [★ 버그 수정] 블록 0번 스레드가 4개 워프의 모든 부분합을 최종 취합하여 
+     * 128개 스레드 전체의 무결한 통계량(Mean 및 Variance)을 도출하도록 파이프라인 연동
+     */
     if (tid == 0) {
-        float mean = local_sum / (float)SPATIAL_DIM;
-        float mean_of_squares = local_squared_sum / (float)SPATIAL_DIM;
+        float total_sum = 0.0f;
+        float total_squared_sum = 0.0f;
+
+        // 분기 예측 실패 지터가 없는 하드웨어 루프 언롤링 연산 전개 (4개 워프 취합)
+        for (int i = 0; i < 4; i++) {
+            total_sum += s_warp_sum[i];
+            total_squared_sum += s_warp_squared_sum[i];
+        }
+
+        // OpenAI Triton 규격(BLOCK_SIZE=128)과 완벽히 동기화된 블록 단위 통계값 확정
+        float mean = total_sum / (float)SPATIAL_DIM;
+        float mean_of_squares = total_squared_sum / (float)SPATIAL_DIM;
         float variance = mean_of_squares - (mean * mean);
         
         block_mean = mean;
         // [Reciprocal Factory Instruction] 무거운 나눗셈 기계어를 제거하고 1클록 고속 역수 제곱근 기계어로 직역
         block_reciprocal_std = rsqrtf(variance + SAFETY_EPSILON); 
     }
-    __syncthreads();
+    __syncthreads(); // 계산된 block_mean 및 block_reciprocal_std가 전체 스레드 레지스터에 전파될 때까지 대기
 
     // 3. Branchless 1-Cycle FMA Machine-Code Fusion
     // 공유 메모리에 백업된 원본 데이터 로드 및 왜도 소산 방정식 수행
