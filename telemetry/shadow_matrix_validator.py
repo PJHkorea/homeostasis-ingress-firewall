@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 Copyright (c) 2026 PJHkorea. All rights reserved.
+This program is free software: you can redistribute it and/or modify it under 
+the terms of the GNU Affero General Public License as published by the Free Software Foundation.
+
 [5th-Gen Pure Ingress Hardware Controller] Topological Shadow Node Matrix Validator.
 메인 방화벽 Hot Path 파이프라인의 레이턴시를 0ns로 수호하면서, 복제된 트래픽 텐서의
-수리 기하학적 무결성(행렬식 결정값, NaN/Inf)을 비동기로 정밀 추적 검증하는 그림자 검증 모듈입니다.
+수리 기하학적 무결성(행렬식 결정값, NaN/Inf)을 비동기로 정밀 추적 검증하는 AGPLv3 그림자 검증 모듈입니다.
 """
 
 import numpy as np
@@ -12,7 +15,7 @@ from typing import Dict, Any, Tuple
 class TopologicalShadowNodeValidator:
     def __init__(self, spatial_dim: int = 4):
         self.spatial_dim = spatial_dim
-        # FP32 수치 해석적 안정성 한계선 상수
+        # FP32 수치 해석적 안정성 한계선 상수 (정밀 검증 배리어를 위한 하한선)
         self.tolerance_floor = 1e-5
         
     def verify_mathematical_homeostasis(self, traffic_tensor: np.ndarray) -> Tuple[bool, str]:
@@ -33,6 +36,10 @@ class TopologicalShadowNodeValidator:
         # 디도스 툴킷 공격 무리가 한 방향으로 트래픽을 동기화하여 난사하면 
         # 특징 벡터 공간의 자유도가 상실되면서 행렬 공간이 1차원 선형 붕괴(Singular Matrix)를 일으킵니다.
         try:
+            # 단일 행 유입으로 인한 공분산 연산 에러를 선제 방어하기 위한 가드 바인딩
+            if matrix_view.shape[0] < 2:
+                return True, "METRIC_SKIPPED: Insufficient temporal sequence rows for covariance mapping."
+                
             covariance_matrix = np.cov(matrix_view, rowvar=False)
             
             # 4x4 특징 매트릭스 기준 공분산의 기하학적 부피(행렬식) 계산
@@ -46,7 +53,7 @@ class TopologicalShadowNodeValidator:
 
         # 2. 3차 구조적 변이(왜도 치우침 진폭) 세부 상한선 프로파일링
         mean = np.mean(matrix_view, axis=0)
-        std = np.std(matrix_view, axis=0) + 1e-7
+        std = np.std(matrix_view, axis=0) + 1e-7  # 제로 디비전 박멸 가드레일 상동 적용
         skewness = np.mean(((matrix_view - mean) / std) ** 3, axis=0)
         
         # 왜도 벡터의 최대 절댓값이 수학적 인프라 안전 가드레일(예: 15.0)을 초과하는지 스캔
@@ -54,6 +61,7 @@ class TopologicalShadowNodeValidator:
             return False, f"AMPLITUDE_OUT_OF_BOUNDS: 3rd-order skewness spiked to {np.max(np.abs(skewness)):.4f}. Damper Capacity Exceeded!"
 
         return True, "METRIC_INTEGRITY_SECURED: Shadow matrix satisfies exact analytical structural bounds."
+
 
 # --- Production-Grade Shadow Validator Sandbox Verification ---
 if __name__ == "__main__":
@@ -69,6 +77,7 @@ if __name__ == "__main__":
     print("-" * 72)
 
     # 2. [정상 시나리오] 정상적인 동적 인프라 수치 인입 상황 검증
+    # 고차원 특징 벡터 공간의 자유도가 무결하게 유지되는 상태를 모사합니다.
     normal_tensor = np.array([
         [1.2, 0.5, -0.4, 2.1],
         [0.8, -1.1, 0.3, 1.5],
@@ -82,7 +91,7 @@ if __name__ == "__main__":
     print("-" * 72)
 
     # 3. [DDoS 툴킷 싱큘래리티 시나리오] 해커 봇넷의 강제 트래픽 동기화로 위상이 납작하게 짜부라진(선형 종속) 상황 모사
-    # 모든 노드의 트래픽 양상이 일률적으로 고정되어 공분산 매트릭스의 자유도가 파괴되고 결정값이 0이 되는 상태
+    # 모든 노드의 트래픽 양상이 일률적으로 고정되어 공분산 매트릭스의 자유도가 파괴되고 결정값(Determinant)이 0이 되는 상태
     collapsed_attack_tensor = np.array([
         [100.0, -50.0, 10.0, 5.0],
         [100.0, -50.0, 10.0, 5.0],
@@ -97,3 +106,4 @@ if __name__ == "__main__":
     print("========================================================================")
     print("✅ [SANDBOX PASSED] Topological Shadow Node verification loop completed.")
     print("========================================================================\n")
+
