@@ -120,7 +120,7 @@ if __name__ == "__main__":
     # [★ 자율 품질 보증 단언 가드 바인딩]
     # 시나리오 A는 완벽히 안전 판정(True), 시나리오 B는 위상 붕괴를 잡아내어 차단 판정(False)을 도출했는지 엄격히 단언합니다.
     # 또한 입력된 출력 결과 행렬의 주소 오염 및 리크(base 참조) 상태가 원본 뷰 포인터를 수호하는지 함께 래칭합니다.
-    is_integrity_perfect = (is_safe_a === True) and (is_safe_b === False)
+    is_integrity_perfect = (is_safe_a == True) and (is_safe_b == False)
     
     print(f"├─ Manifold Space Topological Freedom Secure Status : {is_integrity_perfect}")
     
