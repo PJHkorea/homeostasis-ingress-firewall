@@ -259,6 +259,24 @@ sudo ./deploy.sh unload eth0
 sudo PYTHONPATH=. python3 -m unittest tests.test2_homeostasis_core
 ```
 
+---
+
+### 🐳 Production Dockerfile 경량 가상화 배포 (Containerized Build)
+
+본 프로젝트는 리눅스 커널 헤더와 NVIDIA 드라이버 파편화 환경을 완전히 격리하여 늘 일정한 기계어를 컴파일해 내기 위해 멀티 스테이지 프로덕션 도커파일을 탑재하고 있습니다.
+
+1. **도커 컨테이너 기반 32B 얼라인먼트 일괄 빌드**
+   기존 코드를 단 한 줄도 손대지 않고, 완벽하게 통제된 빌드 샌드박스 내부에서 `vmlinux.h` 적출 및 `homeostasis-ingress-proxy` 정적 바이너리 합성을 완결합니다.
+   ```bash
+   docker build -t homeostasis-ingress-firewall:latest .
+   ```
+
+2. **호스트 커널 및 하드웨어 가속기 직결 가동 (Load)**
+   eBPF 커널 적재 및 NVML 전력 역공학 관제를 위해 호스트의 네트워크 네임스페이스와 특권 권한(`--privileged`)을 완전히 개방하여 인프라를 실시간 가동합니다.
+   ```bash
+   docker run -d --privileged --net=host -v /sys/kernel/debug:/sys/kernel/debug homeostasis-ingress-firewall:latest
+   ```
+
 
 ---
 
