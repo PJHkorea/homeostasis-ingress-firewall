@@ -6,6 +6,14 @@
 # [5th-Gen Pure Ingress Hardware Controller] Master Integrated Makefile.
 # ========================================================================
 
+# ========================================================================
+# Copyright (c) 2026 PJHkorea. All rights reserved.
+# This program is free software: you can redistribute it and/or modify it under 
+# the terms of the GNU Affero General Public License as published by the Free Software Foundation.
+#
+# [5th-Gen Pure Ingress Hardware Controller] Master Integrated Makefile.
+# ========================================================================
+
 # 컴파일러 및 도구 세트 정의
 CC := clang
 CARGO := cargo
@@ -71,13 +79,13 @@ rust_proxy:
 	@cd $(RUST_SRC_DIR) && $(CARGO) build --release
 	@cp $(RUST_SRC_DIR)/target/release/homeostasis-ingress-proxy $(BUILD_DIR)/
 
-# 4. 수리 물리적 위상 무결성 샌드박스 유닛 테스트 자동 구동
+# 4. 수리 물리적 위상 무결성 샌드박스 유닛 테스트 및 100Gbps 스트레스 벤치마크 통합 자동 구동
 .PHONY: test
 test:
 	@echo "🧪 [INTEGRITY-TEST] Initiating Pure Functional Mathematical Sandbox Verification..."
-	# [★ 보정 완료: PYTHONPATH=. 환경 변수 주입]
-	# 최상위 루트 디렉토리에서도 core_formula 하위 수식 패키지를 정확히 스캔하여 ModuleNotFoundError를 원천 방어합니다.
-	PYTHONPATH=. $(PYTHON) -m unittest discover -s tests -p "test_*.py"
+	# [★ 보정 완료: PYTHONPATH=. 환경 변수 주입 및 와일드카드 매핑]
+	# 기존 test_*.py 방식에서 새롭게 추가된 test2_*.py까지 한 번에 수용하여 연쇄 가동하도록 패턴 정합성 확장
+	PYTHONPATH=. $(PYTHON) -m unittest discover -s tests -p "test*.py"
 
 # 5. 빌드 사본 및 임시 컴파일 오브젝트 클린 오퍼레이션
 .PHONY: clean
@@ -90,3 +98,4 @@ clean:
 	# 양자 장벽 수식(spy_mask) 개조에 따른 SASS 컴파일러 구버전 바이너리 오버랩 캐시 지터를 제거합니다.
 	rm -rf ~/.triton/cache
 	@echo "✨ Clean operation finished completely."
+
