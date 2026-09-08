@@ -252,10 +252,13 @@ sudo ./deploy.sh unload eth0
 ```
 
 ### 4. 하드웨어 칩셋 실측 기반 100Gbps 스트레스 테스트 (Performance Assertions)
-외부 대향 하드웨어 장비 없이 단일 서버 내에서 1,488만 패킷 스트림의 최악의 시나리오 밀도를 독자 인젝션하여 CPU 분기 예측 실패율과 커널 dynamic 힙 메모리 고동(Freeze) 수치를 직접 단언(Assert) 검증합니다. (리눅스 로우레벨 카운터 및 perf 스캔을 위해 root 권한 필요)
+인프라 가동 이후, 외부 대향 장비 없이 단일 서버 내에서 1,488만 패킷 스트림의 최악의 시나리오 밀도를 인젝션하여 CPU 분기 예측 실패율과 커널 dynamic 힙 메모리 고동(Freeze) 수치를 실시간으로 단언(Assert) 검증합니다. 
+*(리눅스 로우레벨 카운터 및 네이티브 `perf` 레지스터 래칭 스캔을 위해 root 권한 필요)*
 ```bash
-make test2
+# 100Gbps 스트레스 테스트 독립 가동
+sudo PYTHONPATH=. python3 -m unittest tests.test2_homeostasis_core
 ```
+
 
 ---
 
