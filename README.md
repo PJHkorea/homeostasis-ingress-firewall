@@ -13,33 +13,33 @@ graph TD
 
     %% 1. 패킷 인입 및 관문
     P_IN["1. 패킷 인입 <br> Line-Rate Stream"]
-    KERNEL["2. 리눅스 커널 관문 target_kernel_xdp/xdp_ingress.c <br><br> • eBPF/XDP 레이어 Q16.16 고정소수점 3차 왜도 선제 완충 <br> • 4대 특징 축 RPS, PPS, Error, Bandwidth 32B 캐시라인 텐서화"]
+    KERNEL["2. 리눅스 커널 관문 <br> target_kernel_xdp/xdp_ingress.c <br><br> • eBPF/XDP 레이어 Q16.16 고정소수점 3차 왜도 선제 완충 <br> • 4대 L4/L7 통합 특징 축 텐서화 <br> [RPS(L7), PPS(L4), ErrorRate(L7), Bandwidth(L4)] <br> • 32B 캐시라인 물리 경계 완벽 수호"]
 
     P_IN --> KERNEL
 
     %% 2. 조건 분기 처리
     PASS_ROUTE["커널 프로토콜 스택 <br> 및 서비스 정상 통과"]
-    MUX_INJECT["6. 실리콘 MUX 제어 규칙 커널 역주입 bitwise_mux.c <br><br> • bpf_map_update_elem FFI 실행 <br> • ingress_gating_map 내 IP 비트 락 집행"]
+    MUX_INJECT["6. 실리콘 MUX 제어 규칙 커널 역주입 <br> bitwise_mux.c <br><br> • bpf_map_update_elem FFI 실행 <br> • ingress_gating_map 내 IP 비트 락 즉시 집행 <br> • 조건문 (JMP) 없는 기계어 레벨 차단막 개설"]
 
-    KERNEL -->|정상 패킷: XDP_PASS| PASS_ROUTE
-    KERNEL -->|악성 버스트 검출 / 링버퍼 기부| PROXY
+    KERNEL -->|"정상 패킷: <br> XDP_PASS"| PASS_ROUTE
+    KERNEL -->|"악성 버스트 검출 / <br> 링버퍼 기부"| PROXY
 
     %% 3. Rust 프록시 레이어
-    PROXY["3. 비동기 락프리 통제 프록시 target_proxy_rust/main.rs <br><br> • 1024개 정적 배열 링버퍼 구조 메모리 지터 0% <br> • u64 제어 데이터 격리 및 features 배열 포인터 조준"]
+    PROXY["3. 비동기 락프리 통제 프록시 <br> target_proxy_rust/main.rs <br><br> • 1024개 정적 배열 링버퍼 구조 (메모리 지터 0%) <br> • u64 제어 데이터 격리 및 features 배열 포인터 조준 <br> • 지터 박멸용 실시간 누적 오차 보정 interval 가동"]
 
-    PROXY -->|FFI 0ns 무복사 가속기 토스| ACCEL
+    PROXY -->|"FFI 0ns 무복사 <br> 가속기 토스"| ACCEL
 
     %% 4. 하드웨어 가속기 레이어
-    ACCEL["4. 하드웨어 가속 코어 target_hardware_cuda/ <br><br> • CUDA +1 패딩 스트라이드로 GPU SRAM 뱅크 충돌 0% <br> • Triton 카시미르 압력 및 투과율 수식 제어 <br> 화력이 강할수록 입구를 닫아 패킷 유효 질량 소산"]
+    ACCEL["4. 하드웨어 가속 코어 <br> target_hardware_cuda/ <br><br> • CUDA +1 패딩 스트라이드로 GPU SRAM 뱅크 충돌 0% <br> • Triton 카시미르 압력 및 투과율 수식 제어 <br> • 화력이 강할수록 장벽 압력이 증가하여 <br> 패킷 유효 질량을 제로 (0.0)로 소산"]
 
-    ACCEL -->|128차원 평면 평균 왜도 레지스터 피드백| SHADOW
+    ACCEL -->|"128차원 평면 평균 <br> 왜도 레지스터 피드백"| SHADOW
 
     %% 5. 섀도우 검증 엔진 레이어
-    SHADOW["5. 섀도우 위상 검증 엔진 telemetry/shadow_matrix_validator.py <br><br> • 공분산 행렬식 결정값 실시간 분석 <br> • 동기화 봇넷 난사 시 행렬 공간 1차원 선형 붕괴 포착"]
+    SHADOW["5. 섀도우 위상 검증 엔진 <br> telemetry/shadow_matrix_validator.py <br><br> • 공분산 행렬식 결정값 실시간 분석 (0-Copy 뷰) <br> • 동기화 봇넷 (L4/L7 Flood) 난사 시 <br> 특징 행렬 공간의 1차원 선형 위상 붕괴 포착"]
 
     %% 피드백 클로징 루프
-    SHADOW -->|위상 붕괴 진단: Determinant 최소화| MUX_INJECT
-    MUX_INJECT -->|0ns 락프리 동기화 장벽| KERNEL
+    SHADOW -->|"위상 붕괴 진단: <br> Determinant -> 0.0 수렴"| MUX_INJECT
+    MUX_INJECT -->|"0ns 락프리 <br> 동기화 장벽"| KERNEL
 
     %% 클래스 지정 구문 별도 분리
     class P_IN ingress;
@@ -50,13 +50,13 @@ graph TD
     class ACCEL hardware;
     class SHADOW shadow;
 
-    %% 간선 스타일 커스텀
+    %% 간선 스타일 커스텀 (인덱스 정렬 완결)
     linkStyle 1 stroke:#10b981,stroke-width:2px;
     linkStyle 2 stroke:#ef4444,stroke-width:2px;
     linkStyle 3 stroke:#8b5cf6,stroke-width:2px;
     linkStyle 4 stroke:#f59e0b,stroke-width:2px,stroke-dasharray:5;
-    linkStyle 5 stroke:#10b981,stroke-width:2px;
-
+    linkStyle 5 stroke:#ef4444,stroke-width:2px;
+    linkStyle 6 stroke:#10b981,stroke-width:2px;
 
 
 ```
