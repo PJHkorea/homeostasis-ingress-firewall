@@ -6,14 +6,6 @@
 # [5th-Gen Pure Ingress Hardware Controller] Master Integrated Makefile.
 # ========================================================================
 
-# ========================================================================
-# Copyright (c) 2026 PJHkorea. All rights reserved.
-# This program is free software: you can redistribute it and/or modify it under 
-# the terms of the GNU Affero General Public License as published by the Free Software Foundation.
-#
-# [5th-Gen Pure Ingress Hardware Controller] Master Integrated Makefile.
-# ========================================================================
-
 # 컴파일러 및 도구 세트 정의
 CC := clang
 CARGO := cargo
