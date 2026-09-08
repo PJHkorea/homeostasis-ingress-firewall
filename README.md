@@ -1,5 +1,91 @@
 ### 인프라 입구에서 비정상 패킷을 기계어 레벨로 무력화 + 내부 연산 자원을 정적 O(1) 공간 복잡도로 통제, 오토스케일링 없이 생존하는 방화벽 인프라(poc)
 
+```mermaid
+graph TD
+    %% 스타일 및 테마 정의
+    classDef default fill:#1f2937,stroke:#4b5563,stroke-width:1px,color:#f3f4f6;
+    classDef ingress fill:#065f46,stroke:#10b981,stroke-width:2px,color:#34d399;
+    classDef kernel fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#60a5fa;
+    classDef rust fill:#7c2d12,stroke:#ea580c,stroke-width:2px,color:#fb923c;
+    classDef hardware fill:#4c1d95,stroke:#8b5cf6,stroke-width:2px,color:#a78bfa;
+    classDef shadow fill:#111827,stroke:#6b7280,stroke-width:2px,color:#9ca3af;
+    classDef pass fill:#064e3b,stroke:#059669,stroke-width:1px,color:#a7f3d0;
+
+    %% 1. 패킷 인입 및 관문
+    P_IN["1. 패킷 인입 <br> Line-Rate Stream"]
+    KERNEL["2. 리눅스 커널 관문 target_kernel_xdp/xdp_ingress.c <br><br> • eBPF/XDP 레이어 Q16.16 고정소수점 3차 왜도 선제 완충 <br> • 4대 특징 축 RPS, PPS, Error, Bandwidth 32B 캐시라인 텐서화"]
+
+    P_IN --> KERNEL
+
+    %% 2. 조건 분기 처리
+    PASS_ROUTE["커널 프로토콜 스택 <br> 및 서비스 정상 통과"]
+    MUX_INJECT["6. 실리콘 MUX 제어 규칙 커널 역주입 bitwise_mux.c <br><br> • bpf_map_update_elem FFI 실행 <br> • ingress_gating_map 내 IP 비트 락 집행"]
+
+    KERNEL -->|정상 패킷: XDP_PASS| PASS_ROUTE
+    KERNEL -->|악성 버스트 검출 / 링버퍼 기부| PROXY
+
+    %% 3. Rust 프록시 레이어
+    PROXY["3. 비동기 락프리 통제 프록시 target_proxy_rust/main.rs <br><br> • 1024개 정적 배열 링버퍼 구조 메모리 지터 0% <br> • u64 제어 데이터 격리 및 features 배열 포인터 조준"]
+
+    PROXY -->|FFI 0ns 무복사 가속기 토스| ACCEL
+
+    %% 4. 하드웨어 가속기 레이어
+    ACCEL["4. 하드웨어 가속 코어 target_hardware_cuda/ <br><br> • CUDA +1 패딩 스트라이드로 GPU SRAM 뱅크 충돌 0% <br> • Triton 카시미르 압력 및 투과율 수식 제어 <br> 화력이 강할수록 입구를 닫아 패킷 유효 질량 소산"]
+
+    ACCEL -->|128차원 평면 평균 왜도 레지스터 피드백| SHADOW
+
+    %% 5. 섀도우 검증 엔진 레이어
+    SHADOW["5. 섀도우 위상 검증 엔진 telemetry/shadow_matrix_validator.py <br><br> • 공분산 행렬식 결정값 실시간 분석 <br> • 동기화 봇넷 난사 시 행렬 공간 1차원 선형 붕괴 포착"]
+
+    %% 피드백 클로징 루프
+    SHADOW -->|위상 붕괴 진단: Determinant 최소화| MUX_INJECT
+    MUX_INJECT -->|0ns 락프리 동기화 장벽| KERNEL
+
+    %% 클래스 지정 구문 별도 분리
+    class P_IN ingress;
+    class KERNEL kernel;
+    class PASS_ROUTE pass;
+    class MUX_INJECT kernel;
+    class PROXY rust;
+    class ACCEL hardware;
+    class SHADOW shadow;
+
+    %% 간선 스타일 커스텀
+    linkStyle 1 stroke:#10b981,stroke-width:2px;
+    linkStyle 2 stroke:#ef4444,stroke-width:2px;
+    linkStyle 3 stroke:#8b5cf6,stroke-width:2px;
+    linkStyle 4 stroke:#f59e0b,stroke-width:2px,stroke-dasharray:5;
+    linkStyle 5 stroke:#10b981,stroke-width:2px;
+
+
+
+```
+
+---
+
+# 가동 시나리오 시뮬레이션 명세 (Operational Scenarios)
+
+## 🟢 시나리오 A: 평상시 다이나믹 트래픽 운영 (Normal Dynamic Workloads)
+
+* **상황 개요:** 대규모 마케팅 프로모션이나 점심시간 대 일반 사용자의 대규모 서비스 접속으로 인해 트래픽 진폭(RPS/PPS)이 무작위적이고 동적으로 상승하는 상태.
+* **시스템 내부 동작 메커니즘:**
+    * **자유도 보존:** 사용자들이 각자 다른 브라우저, 다른 주기, 다른 크기의 패킷을 요청하므로, shadow_matrix_validator.py가 섀도우 영역에서 계산하는 4x4 특징 매트릭스의 공분산 행렬식 결정값(Determinant)이 안전 하한선(tolerance_floor = 1e-5)을 상회하며 공간의 자유도가 무결하게 유지됩니다.
+    * **바이패스 정렬:** ingress_gating_map 내에 해당 IP들의 위상 마스크는 0 (XDP_PASS) 상태로 유지됩니다.
+    * **지터 0% 유지:** IngressTrafficAdapter가 가속기 메모리 버스와 1:1 대응되는 C-Contiguous Array 물리 공간을 단 1회 선점 확보해 둔 그릇에 데이터를 매핑하므로 메모리 파편화 래그 없이 통과합니다.
+* **최종 결과:** 방화벽의 CPU 및 메모리 점유율의 미동 없이, 모든 요청이 정상적으로 프로토콜 스택을 통과하여 웹 서버에 도달합니다.
+
+---
+
+## 🚨 시나리오 B: 디도스 툴킷 폭격 및 항상성 각성 (Botnet Confinement Lock)
+
+* **상황 개요:** 해커 군단이 좀비 PC(봇넷) 및 대역폭 점유 툴킷을 사용하여 초당 수백만 발의 변조된 악성 가짜 패킷을 인프라 레이어에 강제로 일제히 난사하기 시작한 상태.
+* **시스템 내부 동작 메커니즘:**
+    * **위상 공간 붕괴 감지:** 툴에 의해 제어되는 봇넷 무리가 '동기화'되어 동일한 양상의 패킷을 난사하는 순간, 특징 공간의 자유도가 완전히 파괴됩니다. 섀도우 엔진이 이를 역산하면 공분산 행렬식 결정값이 정확히 0.0으로 수렴하며 짜부라지는 '위상 공간 붕괴' 현상이 체포됩니다.
+    * **카시미르 양자 압착 제어:** 128차원 특징 축 텐서가 가속기 레일 위로 인입됩니다. 트래픽 변동성(분산)이 임계 장벽 제로 한계선을 돌파하여 폭주하려고 하자, schrodinger_filter.triton 커널 내부의 투과율 공식 $T = \exp(-2\sqrt{V})$이 각성합니다. 공격 난사 화력이 강하면 강할수록 분모의 압착 압력이 곱절로 폭등하여, 패킷의 통과 확률(T)을 소수점을 넘어 기학학적 제로(0.0)로 강제 평탄화 시킵니다.
+    * **실리콘 비트 락(MUX) 커널 주입:** 통제관인 Rust 마스터 데몬이 가속기 레지스터 출력으로부터 이상 징후를 확정 짓고, 5ms 고속 폴링 레일을 타고 리눅스 커널 최하단의 ingress_gating_map을 하이재킹하여 공격 IP 그룹에 차단 마스크(1)를 직접 주입합니다.
+    * **1-Cycle 무분기 증발:** 이제 최전방 관문(bitwise_mux.c)에서는 패킷 분석에 if (공격) 같은 조건문을 쓰지 않고, 2의 보수 정수 연산 마스크를 전개하여 단 1클록 만에 논리 연산자로만 해당 패킷들을 커널 상단으로 올리지 않고 물리적으로 즉시 증발(XDP_DROP)시킵니다.
+* **최종 결과:** 인프라 자원(CPU 분기 예측 실패 지터 0%, 미분 노드 거세로 RAM/VRAM 소모 복잡도 $O(1)$ 동결)의 오염 없이 대규모 폭격 트래픽 전체가 진공 락 상태로 격리·소산됩니다.
+
 
 ---
 
