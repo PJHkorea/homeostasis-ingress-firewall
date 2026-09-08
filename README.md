@@ -272,10 +272,18 @@ sudo PYTHONPATH=. python3 -m unittest tests.test2_homeostasis_core
    ```
 
 2. **호스트 커널 및 하드웨어 가속기 직결 가동 (Load)**
-   eBPF 커널 적재 및 NVML 전력 역공학 관제를 위해 호스트의 네트워크 네임스페이스와 특권 권한(`--privileged`)을 완전히 개방하여 인프라를 실시간 가동합니다.
+   eBPF 커널 적재 및 NVML 전력 역공학 관제를 위해 호스트의 네트워크 네임스페이스와 특권 권한(`--privileged`), 커널 디버그 버스 가드를 완전히 개방하여 실시간 가동합니다.
+   *(명령어 종단에 대상 인터페이스명(예: `eth0`)을 인자로 토스하여 구동 가능합니다)*
    ```bash
-   docker run -d --privileged --net=host -v /sys/kernel/debug:/sys/kernel/debug homeostasis-ingress-firewall:latest
+   docker run -d --name homeostasis-wall --privileged --net=host -v /sys/kernel/debug:/sys/kernel/debug homeostasis-ingress-firewall:latest load eth0
    ```
+
+3. **가상화 방화벽 실시간 면역 로그 및 텔레메트리 파형 추적**
+   컨테이너 백그라운드 구동 스레드에서 출력되는 4대 특징 축 `features` 텐서 덤프 및 실시간 `XDP_DROP` 격리 타격 로그를 모니터링합니다.
+   ```bash
+   docker logs -f homeostasis-wall
+   ```
+
 
 
 ---
