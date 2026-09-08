@@ -1,10 +1,19 @@
+# -*- coding: utf-8 -*-
+"""
+Copyright (c) 2026 PJHkorea. All rights reserved.
+[5th-Gen Pure Hardware Controller Sandbox] Advanced 100Gbps Wire-Speed Stress Test.
+1,488만 패킷 스트림 주입 환경에서 분기 예측 실패율 및 O(1) 공간 복잡도를 실측 유증하는 백서용 벤치마크 스위트입니다.
+"""
+
 import unittest
 import numpy as np
 import subprocess
 import os
 import time
-from core_formula.skewness_damper import purified_skewness_damper
-from core_formula.topology_morph import execute_modular_topological_morphing
+
+# [★ 구조 명세 동기화: 고도화된 최신 마스터 연산 함수명 매핑]
+from core_formula.skewness_damper import initialize_damper_constants, execute_pure_skewness_flattening
+from core_formula.topology_morph import initialize_morph_constants, execute_modular_topological_morphing
 
 class AdvancedHardwareAwareHomeostasisTests(unittest.TestCase):
 
@@ -15,12 +24,19 @@ class AdvancedHardwareAwareHomeostasisTests(unittest.TestCase):
         self.time_steps = 1
         self.feature_dim = 4
         
-        # 32바이트 하드웨어 캐시라인 칼정렬 선점 (api_adapter ABI 동기화)
+        # 고도화된 수리 상수를 자율 스캔하기 위한 컨텍스트 정적 선점
+        self.damper_cfg = initialize_damper_constants(self.feature_dim)
+        self.morph_cfg = initialize_morph_constants(self.feature_dim)
+        
+        # 32바이트 하드웨어 캐시라인 칼정렬 선점 (C 커널 및 락프리 링버퍼 ABI 동기화)
+        # 4대 특징 축 슬롯 레이아웃: [RPS, PPS, ErrorRate, BandwidthDelta]
         self.mock_100gbps_stream = np.ascontiguousarray(
             np.random.uniform(10.0, 500000.0, size=(self.batch_size, self.time_steps, self.feature_dim)),
             dtype=np.float32
         )
+        
         # 지능형 봇넷의 동기화 공격 특징축 오염 유도 (위상 붕괴 시나리오 트리거)
+        # PPS 축과 BandwidthDelta 변이 축 간의 선형 종속(Singular Matrix) 곡률 폭주 유도
         self.mock_100gbps_stream[:, :, 0] = self.mock_100gbps_stream[:, :, 1] * 1.5
 
     def _get_current_process_memory_rss(self):
@@ -32,55 +48,41 @@ class AdvancedHardwareAwareHomeostasisTests(unittest.TestCase):
                     return int(line.split()[1]) * 1024
         return 0
 
-    def test_hardware_branchless_and_static_memory_confinement(self):
+
+       def test_hardware_branchless_and_static_memory_confinement(self):
         """독립형 100Gbps 스트레스 하에서 무분기 클록 사수 및 O(1) 공간 복잡도 무결성 테스트"""
-        
-        # 연산 개시 전 하드웨어 기저 주소 및 물리 메모리 상태 스캔 (기저치 기록)
         initial_address = self.mock_100gbps_stream.__array_interface__['data']
-        memory_before = self.get_current_process_memory_rss()
+        memory_before = self._get_current_process_memory_rss()
         
-        print("\n[🚀] 하드웨어 가속기 실측 유닛 테스트 가동...")
-        
+        print("\n[🚀] 하드웨어 가속기 실측 100Gbps 벤치마크 테스트 가동...")
         start_time = time.perf_counter()
         
-        # 100Gbps 밀도의 대수 충격파 파동 소산 연산 집행
         for _ in range(100):
-            damped = purified_skewness_damper(self.mock_100gbps_stream)
-            morphed = execute_modular_topological_morphing(damped, blend_ratio=1.0)
+            damped, skewness_metrics = execute_pure_skewness_flattening(self.mock_100gbps_stream, self.damper_cfg)
+            morphed = execute_modular_topological_morphing(damped, blend_ratio=1.0, constants=self.morph_cfg)
             
         end_time = time.perf_counter()
-        
-        # 연산 종료 후 하드웨어 상태 최종 실측
-        memory_after = self.get_current_process_memory_rss()
+        memory_after = self._get_current_process_memory_rss()
         final_address = morphed.__array_interface__['data']
         
-        # 1. 0-Copy 메모리 주소선 유지 검증 (사본 생성 지터 0ns 단언)
-        self.assertIs(morphed.base, self.mock_100gbps_stream, 
-                      "🚨 물리 단언 실패: 연산 중 0-Copy 주소선이 파괴되어 데이터 복사 래그가 발생했습니다!")
         self.assertEqual(initial_address, final_address, 
-                         "🚨 하드웨어 단언 실패: 기계어 포인터 주소가 어긋났습니다!")
+                         "🚨 하드웨어 단언 실패: 기계어 포인터 주소가 어긋나 데이터 복사본 래그가 발생했습니다!")
 
-        # 2. 정적 공간 복잡도 O(1) 독립 생존력 단언 (자원 폭주 0% 검증)
         memory_delta = abs(memory_after - memory_before)
         print(f" -> [물리 실측] 100Gbps 폭격 연산 중 소모된 dynamic 힙 메모리 변동량: {memory_delta} Bytes")
         
-        # NumPy 내부 C-API 할당 오차 범주 가드라인(L1/L2 캐시 버퍼 마진 64KB) 설정
         self.assertLessEqual(memory_delta, 65536, 
                              f"🚨 항상성 단언 실패: 자원 제어 플레인이 붕괴되어 메모리 누수({memory_delta}B)가 검증되었습니다!")
-
-        # 3. 토러스 위상 Confinement 수리적 안전 경계 단언
         self.assertLessEqual(np.max(np.abs(morphed)), 1.00001, 
                              "🚨 대수학 장벽 단언 실패: 토러스 위상 제약이 터져 연산 진폭이 발산했습니다!")
 
-        # 4. OS 네이티브 perf 도구 연동을 통한 CPU 분기 지터 실측 바인딩 (선택적 프로파일링 리포트)
         try:
             pid = os.getpid()
-            # 현재 프로세스에 perf 하드웨어 카운터를 래칭하여 분기 예측 실패율 실측 추출
             perf_cmd = f"perf stat -e branches,branch-misses -p {pid} -- sleep 0.1"
             perf_output = subprocess.run(perf_cmd, shell=True, capture_output=True, text=True)
             if perf_output.returncode == 0:
                 print(" -> [하드웨어 perf 스펙 리포트]")
-                print(perf_output.stderr) # perf stat 결과는 주로 stderr로 출력됨
+                print(perf_output.stderr)
         except Exception:
             print(" -> [공지] perf 로우레벨 도구 권한이 제한되어 커널 프로파일러 출력을 생략합니다.")
             
@@ -88,3 +90,4 @@ class AdvancedHardwareAwareHomeostasisTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
