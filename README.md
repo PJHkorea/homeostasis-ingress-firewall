@@ -213,7 +213,12 @@ homeostasis-ingress-firewall/
 │
 ├── build.rs                      # NVIDIA NVCC 컴파일러 최적화 파이프라인 정적 링크 스크립트
 ├── deploy.sh                     # Kernel-Host 원터치 가동 및 안전 롤백 자동화 배포 엔진
-└── Makefile                      # 이종 가속 커널 일괄 자동 합성 및 Triton 캐시 퍼지 빌드 시스템
+├── Makefile                      # 이종 가속 커널 일괄 자동 합성 및 Triton 캐시 퍼지 빌드 시스템
+├── Cargo.toml                    # panic=abort 및 LTO 최적화 기반 패닉 지터 0% 수호 설정 명세
+└── Dockerfile                    # 이종 언어 가속 커널 일괄 합성 및 STAGE-2 런타임 가상화 배포 엔진
+
+
+
 
 ```
 
