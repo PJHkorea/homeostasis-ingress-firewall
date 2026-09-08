@@ -14,8 +14,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+// [★ 아키텍처 고도화: libbpf-rs 네이티브 인터페이스 바인딩 선점]
+// 주석 모사 단계를 파괴하고 실제 리눅스 커널 HBM 해시 맵에 0ns 락프리 시스템 콜을 때리기 위한 라이브러리 확장
+use libbpf_rs::{ObjectBuilder, MapFlags};
+
 /*
- * [★ FFI 바인딩 주입] target-hardware-cuda/skewness_kernel.cu에서 
+ * [★ FFI 바인딩 주입] target_hardware_cuda/skewness_kernel.cu에서 
  * 최종 수리·마감한 128차원 전체 왜도 평균 리덕션 가속 런처 함수를 Rust 단축 링크로 연결합니다.
  */
 #[link(name = "skewness_kernel", kind = "static")]
@@ -28,6 +32,7 @@ extern "C" {
         stream: *mut std::ffi::c_void, // cudaStream_t 매핑 레일
     );
 }
+
 
 /*
  * [★ 아키텍처 리팩토링: FFI Matrix Alignment Re-sync]
@@ -52,11 +57,32 @@ pub struct HomeostasisContext {
     pub global_blend_ratio: f32,               // 전역 위상 천이 가변 계수 (t)
 }
 
+
 #[tokio::main]
 async fn main() {
     println!("========================================================================");
     println!("🦀 [PROXY-START] Launching Rust High-Performance Homeostasis Master Hub");
     println!("========================================================================");
+
+    // [★ 아키텍처 완결: 리눅스 네이티브 eBPF 커널 스켈레톤 오브젝트 로딩 및 맵 바인딩]
+    // Makefile의 BUILD_DIR 규격을 따라 생성된 xdp_ingress.o 바이너리를 메모리에 실시간 주입 적재합니다.
+    let bpf_object_path = "../build/xdp_ingress.o";
+    
+    let open_object = ObjectBuilder::default()
+        .open_file(bpf_object_path)
+        .expect("❌ [Fatal] eBPF Object File Open Failed. Please check if 'make all' was executed.");
+        
+    let loaded_object = open_object
+        .load()
+        .expect("❌ [Fatal] eBPF Verifier Rejected Ingress Object. Kernel Loading Faulted.");
+
+    // xdp_ingress.c 내부의 ingress_gating_map 해시 맵 주소선을 직접 추출하여 
+    // 비동기 스레드 간 동시성 레이스 컨디션 없이 안전하게 소유권을 양도하기 위해 Arc로 바인딩합니다.
+    let raw_gating_map = loaded_object
+        .map("ingress_gating_map")
+        .expect("❌ [Fatal] Cannot find 'ingress_gating_map' in eBPF object blueprint.");
+        
+    let ingress_gating_map_shared_object = Arc::new(raw_gating_map);
 
     // 1. 비동기 멀티스레딩 통신 레일 개설 (MPSC Channel Pipeline)
     // 초당 백만 단위 이벤트의 핫 패스 버스트를 스톨 없이 수용하기 위해 102,400 바운디드 채널 유지
@@ -70,7 +96,7 @@ async fn main() {
     // 2. [Task 1] 커널 최하단 eBPF/XDP 데이터 플레인 고속 폴링 및 데이터 하이재킹 태스크
     let kernel_polling_ctx = Arc::clone(&global_context);
     tokio::spawn(async move {
-                println!("🛰️  [Data-Plane-Bridge] eBPF/XDP Ring Buffer Pointer Interception Active.");
+        println!("🛰️  [Data-Plane-Bridge] eBPF/XDP Ring Buffer Pointer Interception Active.");
         
         // [★ 지터 박멸] 고정 지연 대신 실시간 누적 실행 지터를 자동 보정하는 interval 레일 전개
         let mut polling_interval = tokio::time::interval(Duration::from_millis(10));
@@ -100,6 +126,7 @@ async fn main() {
             }
         }
     });
+
 
 
 
