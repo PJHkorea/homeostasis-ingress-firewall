@@ -41,27 +41,29 @@ FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 WORKDIR /app
 
-# 실전 드라이버 로드 및 텔레메트리를 위한 최소 커널 통신 유틸리티 이식
+# 1. 실전 드라이버 로드 및 텔레메트리를 위한 최소 커널 통신 유틸리티 이식
 RUN apt-get update && apt-get install -y \
     iproute2 \
     python3 \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# 비동기 관제 수학 필터를 위한 상위 고속 파이썬 라이브러리 캐싱 설치
+# 2. 비동기 관제 수학 필터를 위한 상위 고속 파이썬 라이브러리 캐싱 설치
 RUN pip3 install --no-cache-dir numpy pynvml
 
-# Builder 스테이지에서 수리 물리 검증이 끝난 최종 마스터 아티팩트들만 정밀 하이재킹 복사
+# 3. Builder 스테이지에서 수리 물리 검증이 끝난 최종 마스터 아티팩트들만 정밀 하이재킹 복사
+# [★ 구조 명세 동기화] 패키지 경로를 언더바(_) 규격으로, 출력 파일명을 homeostasis-ingress-proxy로 칼정렬 반영
 COPY --from=builder /usr/src/homeostasis-ingress-firewall/build/ /app/build/
-COPY --from=builder /usr/src/homeostasis-ingress-firewall/target_proxy_rust/target/release/target_proxy_rust /app/target_proxy_rust
+COPY --from=builder /usr/src/homeostasis-ingress-firewall/target_proxy_rust/target/release/homeostasis-ingress-proxy /app/build/homeostasis-ingress-proxy
 COPY --from=builder /usr/src/homeostasis-ingress-firewall/deploy.sh /app/deploy.sh
 COPY --from=builder /usr/src/homeostasis-ingress-firewall/telemetry/ /app/telemetry/
 COPY --from=builder /usr/src/homeostasis-ingress-firewall/core_formula/ /app/core_formula/
 
-# 원터치 집행기 셸 스크립트 실행 권한 물리 래칭
+# 4. 원터치 집행기 셸 스크립트 실행 권한 물리 래칭
 RUN chmod +x /app/deploy.sh
 
-# 컨테이너 구동 시 NIC 드라이버 레일 위로 비분기 비트 MUX XDP 필터를 즉각 로드 적재하도록 엔트리포인트 고정
+# 5. 컨테이너 구동 시 NIC 드라이버 레일 위로 비분기 비트 MUX XDP 필터를 즉각 로드 적재하도록 엔트리포인트 고정
 # (실전 가동 시 환경변수 혹은 인자로 인터페이스명을 토스받아 구동 가능)
 ENTRYPOINT ["./deploy.sh"]
 CMD ["load", "eth0"]
+
