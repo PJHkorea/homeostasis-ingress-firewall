@@ -10,7 +10,6 @@ CARGO := cargo
 PYTHON := python3
 BPFTOOL := bpftool
 
-# [★ 구조 명세 동기화 매트릭스 레일] - 경로의 하이픈(-)을 언더바(_)로 변환
 BUILD_DIR := ./build
 XDP_SRC_DIR := ./target_kernel_xdp
 RUST_SRC_DIR := ./target_proxy_rust
