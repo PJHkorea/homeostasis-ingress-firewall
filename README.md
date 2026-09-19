@@ -1,3 +1,9 @@
+### Architectural Scope & Directional PoC
+
+**Please note that this repository is a high-level Proof-of-Concept (PoC)** validating the integration of eBPF/XDP Kernel Data Planes, Asynchronous Rust Control Proxies, and CUDA/Triton Hardware-Accelerated Interlocks to neutralize volumetric DDoS bursts at the machine-code level without auto-scaling reliance. Community collaboration is welcomed.
+
+---
+
 ### 레포지토리를 만들게 된 이유
 
 디도스 공격을 받으면 수비하는 사람은 왜 매번 손해를 봐야 할까요?
@@ -242,7 +248,14 @@ homeostasis-ingress-firewall/
 
 ---
 
-## 🚀 배포 가이드 (Quick Start)
+> ⚠️ **IMPORTANT: PoC 가벼운 테스트 배포 가이드**
+>
+> 본 프로젝트는 하드웨어 가속 기반 방화벽 패러다임을 검증하기 위한 **개념 증명(PoC) 목적의 가벼운 테스트 배포 버전**입니다. 
+> 리눅스 커널 최하단 드라이버(eBPF/XDP) 레이어와 GPU 하드웨어 레지스터 포인터를 직접 통제하므로, 인프라 환경에 따라 민감하게 반응할 수 있습니다. 
+> 
+> 여러분께서는 이 점을 반드시 유념하시고, **사용하시는 시스템 사양 및 네트워크 카드(NIC) 인터페이스 등 각자의 개발 상황에 맞게 코드를 충분히 수정·검증하신 후** 아래의 방식을 사용해 보시는 것을 권장합니다.
+
+---
 
 본 프로젝트는 리눅스 네트워크 인터페이스 최하단 드라이버 레이어와 고성능 하드웨어 가속기 포인터를 물리적으로 통제하므로, 반드시 `root` 권한(`sudo`)으로 실행해야 합니다.
 
