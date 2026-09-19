@@ -12,6 +12,17 @@ from typing import List, Dict, Any
 
 class IngressTrafficAdapter:
     def __init__(self, spatial_dim: int = 128):
+        # Architectural Design Note: Isolated Dimension Management
+        # Intentional decoupling between 'spatial_dim' and 'aligned_dim' is maintained to enforce
+        # strict separation between "algebraic mathematical boundaries" and "hardware memory alignment".
+        # 
+        # 1. Mathematical Integrity: 'spatial_dim' represents the exact number of active feature axes
+        #    used as the denominator in statistical covariance/skewness equations. Mixing this with
+        #    padded dimensions would contaminate the density calculations with trailing zeroes.
+        # 
+        # 2. Hardware Optimization: 'aligned_dim' is a hardware-bounded memory stride tailored for 
+        #    SIMD/Warp-level vectorized loading and ensuring zero-copy FFI alignment with Triton/CUDA kernels,
+        #    which utilize masks (e.g., thread_idx < SPATIAL_DIM) to prevent processing padded dummy bytes.
         self.spatial_dim = spatial_dim
         # Synchronize hardware cache line alignment specifications
         self.aligned_dim = (spatial_dim + 7) & ~7
