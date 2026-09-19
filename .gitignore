@@ -1,0 +1,28 @@
+# ========================================================================
+# Copyright (c) 2026 PJHkorea. All rights reserved.
+# [Pure Ingress Hardware Controller] Production Git Ignore Specifications.
+# ========================================================================
+
+# 1. Linux Kernel & Cross-Language Build Artifacts
+# Isolates heterogeneous language unified machine-code objects and runtime buffers generated via Makefile
+/build/
+
+# 2. Rust Framework Compilation Track
+# Blocks dynamic heap compilation trees expanding up to hundreds of megabytes within target_proxy_rust
+target/
+**/target/
+
+# 3. Hardware Accelerator Runtime Cache
+# Prevents SASS compiler overlap cache jitter and crashes across heterogeneous GPUs (A100, H100, etc.)
+.triton/
+**/.triton/
+
+# 4. Kernel Infrastructure Leak Protection
+# Eradicates leakage of structural kernel BTF offset specifications harvested from the local host system
+target_kernel_xdp/vmlinux.h
+
+# 5. OS & Python Environmental Noise
+# Removes macOS and Linux system metadata residues alongside localized virtual environment serialization buffers
+.DS_Store
+__pycache__/
+*.pyc
