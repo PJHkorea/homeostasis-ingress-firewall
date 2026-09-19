@@ -1,0 +1,113 @@
+# Infrastructure Upper Homeostasis: Mathematical Dissipation & Topology Collapse Detection
+
+본 문서는 `homeostasis-ingress-firewall` 인프라가 OS 커널 레이어와 하드웨어 가속기(GPU) 간의 물리적 통신 레이턴시 장벽을 무력화하고, 대규모 분산 거부 공격(DDoS)을 대수학적 파도로 상쇄시키는 핵심 설계 사상 및 위상 기하학적 탐지 메커니즘을 기술합니다.
+
+---
+
+## 1. 디도스(DDoS) 자본적 비대칭성 해결 사상 (Economic & Structural Asymmetry Resolution)
+
+### 레거시 인프라의 근본적 파산 구조
+전통적인 네트워크 보안 인프라는 공격자가 자원을 난사할 때 방어자가 자원을 더 많이 소모하는 **'경제적·구조적 비대칭성(Asymmetry)'** 위에 놓여 있습니다.
+* **공격자 비용 (Minimal):** 좀비 PC 봇넷 혹은 변조 툴킷을 통해 단 몇 줄의 기계 명령어로 초당 수백만 개의 패킷(Line-Rate Stream)을 무작위로 인젝션합니다.
+* **방어자 비용 (Exponential):** 유입된 패킷의 헤더를 파싱하고, State 테이블(Conntrack)을 조회하며, L7 영역에서 룰셋 매칭을 돌리는 과정에서 CPU JMP 분기 예측 실패 및 dynamic 힙 할당 지터가 발생합니다. 트래픽 버스트가 심해지면 오토스케일링 인프라가 작동하여 수비자의 지갑(클라우드 비용)이 먼저 파산하거나 가상 메모리 고갈(OOM)로 방어 장비가 폭사합니다.
+
+### 항상성 소산(Homeostatic Dissipation) 패러다임
+본 프로젝트는 **"공격자가 화력을 쏟아부을수록 공격자의 컴퓨팅 자산(지갑)만 털리고, 수비자의 자원 소모는 정적 \(O(1)\) 공간 복잡도로 완전히 동결되는 장벽을 구축한다"**는 전제에서 출발합니다.
+
+---
+
+```mermaid
+flowchart TD
+    %% 노드 정의
+    A["<h3>1. Volumetric Attack Burst</h3><p>공격 화력 폭증 </br> (위험 유입)</p>"]
+    B["<h3>2. Fixed O(1) Matrix Allocation</h3><p>메모리 자원 점유 동결 </br>  (방어 격리)</p>"]
+    C["<h3>3. Algebraic Vector Dissipation</h3><p>곱셈 1회로 에너지 소산 </br>  (완화/제거)</p>"]
+
+    %% 흐름 연결
+    A ==>|트래픽 급증| B
+    B ==>|연산 및 상쇄| C
+
+    %% 스타일링
+    style A fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c
+    style B fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    style C fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+
+```
+---
+
+# 공분산 행렬식 기반 위상 공간 붕괴 탐지 매커니즘
+
+## 1. 개요
+알려지지 않은 미지의 제로데이(Zero-day) 공격이나 정상 사용자로 교란 위장한 고지능형 봇넷은 단일 시그니처나 임계치 기반 필터로 잡아낼 수 없습니다. 본 아키텍처는 이를 해결하기 위해 트래픽의 **'행동적 엔트로피'**를 기하학적 위상 공간으로 사상(Mapping)하여 체포합니다.
+
+---
+
+## 2. 특징 벡터 공간 사상 및 공분산 구조화
+최전방 eBPF 데이터 플레인에서 수집된 인프라 메트릭은 실시간으로 4차원 연속 특징 공간(Feature Space)의 확률 변수 벡터 $$\mathbf{X}$$ 로 정의됩니다.
+
+$$ \mathbf{X} = [RPS(L7), \; PPS(L4), \; ErrorRate(L7), \; BandwidthDelta(L4)]^T $$
+
+
+메인 핫 패스와 완전히 격리된 그림자 노드(`telemetry/shadow_matrix_validator.py`)는 수집된 특징 축들의 상호 상관관계를 비동기로 연산하여 4 × 4 공분산 행렬(Covariance Matrix) $$\mathbf{\Sigma}$$ 를 구성합니다.
+
+$$ \mathbf{\Sigma} = E[(\mathbf{X} - \mu_x)(\mathbf{X} - \mu_x)^T] $$
+
+
+---
+
+## 3. 위상 공간 붕괴(Topology Collapse)의 수리적 정의
+일반적인 무작위 사용자 트래픽(Normal Workloads) 상황에서는 각 사용자가 무작위 브라우저, 무작위 요청 주기, 상이한 크기의 패킷 데이터 밀도를 가집니다. 따라서 특징 공간 내의 데이터 분포는 다차원으로 고르게 분산되며, **공간의 자유도(Degree of Freedom)**가 무결하게 유지됩니다. 
+
+이 상태에서 공분산 행렬의 행렬식 결정값(Determinant)은 특정 임계 하한선 이상을 상회합니다.
+
+$$ \det(\mathbf{\Sigma}) \gg \text{tolerance floor} \quad (10^{-5}) $$
+
+그러나 해커의 디도스 툴킷이나 동기화된 봇넷 군단이 일제히 트래픽 폭격을 가하는 순간, 이 악성 트래픽 무리는 수리적으로 **'고도의 동기화(Synchronization)'** 상태에 빠집니다. 무작위성이 사라지고 특징 벡터 축들이 특정한 선형 종속(Linearly Dependent) 궤적으로 일렬 정렬하게 됩니다. 즉, 다차원 공간의 부피가 0으로 수렴하는 **위상 공간 붕괴**가 발생하며 이를 통해 공격을 정밀 탐지합니다.
+
+---
+### 예시
+
+```mermaid
+graph TD
+    classDef normal fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#0d47a1;
+    classDef attack fill:#ffebee,stroke:#e53935,stroke-width:2px,color:#b71c1c;
+    classDef Highlight fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#e65100;
+
+    subgraph Normal ["[ 정상 트래픽 위상 공간 ]"]
+        N1[Dimension 4D]
+        N2[자유도 무결하게 분산]
+        N_Space["*  .  :<br>.  *  .<br>:  .  *"]
+        N1 --> N2 --> N_Space
+    end
+
+    subgraph Attack ["[ 디도스 폭격 시 위상 공간 붕괴 ]"]
+        A1[Dimension -> 1D Line]
+        A2[자유도 파괴 / 1차원 선형 압착]
+        A_Space["|<br>/<br>/"]
+        A1 --> A2 --> A_Space
+    end
+
+    Normal == "디도스 공격 (DDoS)" ==> Attack
+    A_Space --> Det["⚠️ Determinant ➔ 0.0<br>(부피 소멸 / 시스템 붕괴)"]
+
+    class N1,N2,N_Space normal;
+    class A1,A2,A_Space attack;
+    class Det Highlight;
+```
+
+---
+
+이 순간, $4 \times 4$ 매트릭스의 특정 행과 열이 완벽히 겹쳐지면서 행렬 공간의 체적이 짜부라지는 **위상 공간 붕괴(Topology Collapse)** 현상이 발생합니다. 이를 대수학적으로 추적하면 공분산 행렬식의 결정값이 기하학적으로 `0.0`을 향해 수렴합니다.
+
+$$ \lim_{\text{Botnet Flood} \to \infty} \text{Det}(\mathbf{\Sigma}) = 0.0 $$
+
+
+### 3) 0ns 락프리 실리콘 MUX 장벽 피드백 체인 인터록
+`shadow_matrix_validator.py`가 실시간 부동소수점 복사 없이(0-Copy View) 이 위상 공간의 체적 붕괴 진단 신호를 포착하면, 통제 데몬(`target_proxy_rust`)은 즉시 하드웨어 항상성 피드백을 가동합니다.
+
+1. **위상 장벽 각성:** 전역 위상 천이 가변 계수 \(t\)를 즉시 최고 레벨(`global_blend_ratio = 1.0`)로 폭등시킵니다.
+2. **커널 HBM 직접 하이재킹:** Rust의 비동기 채널(Tokio MPSC) FFI를 통해 리눅스 최하단 eBPF 해시 맵(`ingress_gating_map`) 공간에 대상 공격 IP 비트 락(1 = `XDP_DROP`)을 원자적으로 직접 주입합니다.
+3. **무분기 1클록 증발:** 최전방 관문(`bitwise_mux.c`)은 `if (공격)` 같은 CPU 파이프라인 스탈 유발 분기문을 가동하지 않고, 주입된 마스크를 정수 2의 보수 논리 연산자로만 전개하여 **단 1클록 만에 패킷을 즉시 소산 증발**시킵니다.
+
+단 하나의 정적인 시그니처나 블랙리스트 패턴 없이도, **"공격자가 트래픽을 동기화하여 난사한다"는 하드웨어 행동 특징 매니폴드 자체를 물리 법칙으로 체포하여 소산**시키는 무결성이 완성됩니다.
+
