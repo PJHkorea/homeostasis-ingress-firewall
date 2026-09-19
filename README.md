@@ -205,6 +205,20 @@ graph TD
 
 ---
 
+## 시스템 아키텍처 개요 (Architecture Overview)
+
+본 프로젝트는 실시간 패킷 처리 통로(Hot Path)와 가속기 추론 통로(Shadow Path)를 물리적으로 단절하여 **OS 커널 ↔ PCIe 버스 ↔ GPU 가속기 간의 통신 레이턴시 병목을 우회**합니다.
+
+*   **실시간 집행 (Hot Path):** `bitwise_mux.c`가 조건문 없는 정수 비트 연산 마스크를 전개하여 1클록 만에 패킷 통과/증발 집행.
+*   **비동기 분석 (Shadow Path):** `main.rs` 프록시가 32바이트 경량 특징 텐서만 무복사 토스하여 GPU 온칩 SRAM 레일 위에서 왜도 소산 대수학 연산 집행.
+
+> 💡 **코드 레벨 아키텍처 및 내부 구현에 대한 딥다이브는 아래의 명세서를 참조하십시오:**
+> *   [전체 인프라 제로카피 인터록 및 수학적 소산 수식 개요 (`docs/ARCHITECTURE.md`)](./docs/ARCHITECTURE.md)
+> *   [eBPF/XDP 커널 데이터 플레인 및 무분기 MUX 명세 (`docs/KERNEL_DATA_PLANE.md`)](./docs/KERNEL_DATA_PLANE.md)
+> *   [CUDA 온칩 공유 메모리 뱅크 충돌 박멸 및 기계어 최적화 명세 (`docs/ACCELERATOR_CORE.md`)](./docs/ACCELERATOR_CORE.md)
+
+---
+
 ```directory
 homeostasis-ingress-firewall/
 ├── core_formula/
