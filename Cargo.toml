@@ -2,24 +2,24 @@
 name = "homeostasis-ingress-proxy"
 version = "1.0.0"
 edition = "2021"
-authors = ["PJHkorea <pjh_korea@example.com>"]
-description = "5th-Gen Pure Ingress Hardware Control Orchestrator Hub"
+description = "Pure Ingress Hardware Control Orchestrator Hub"
 license = "AGPL-3.0-only"
 
 [dependencies]
-# 비동기 멀티스레딩 및 고속 네트워크 폴링 코어
+# Asynchronous multi-threading and high-speed network polling core
 tokio = { version = "1.38", features = ["full"] }
 
-# eBPF/XDP 커널 맵 제어 및 공유 메모리 바인딩 핵심 라이브러리
+# Core library for eBPF/XDP kernel map control and shared memory binding
 libbpf-rs = "0.22"
 
 [build-dependencies]
-# [★ 구조 명세 동기화: CUDA FFI 정적 빌드 자동화 링크 인터록]
-# build.rs 내부에서 target_hardware_cuda/skewness_kernel.cu 소스를 nvcc로 자동 컴파일하기 위한 빌드 스크립트 레일
+# [Structural Specification Synchronization: Automated CUDA FFI Static Link Interlock]
+# Build script rail to automatically compile target_hardware_cuda/skewness_kernel.cu via nvcc within build.rs
 cc = "1.0"
 
 [profile.release]
-opt-level = 3           # 하드웨어 레지스터 파이프라인 연산 레벨 최대 압축 최적화 (O3)
-lto = true              # 링킹 타임 전역 최적화를 통한 죽은 코드(Dead Code) 제거 가동
-codegen-units = 1       # 컴파일러 스레드를 단일화하여 코드 블록 최적화 병합 효율 극대화
-panic = "abort"         # 스택 언와인딩(Unwinding) 트래킹을 영구 거세하여 패닉 지터 0% 수호
+opt-level = 3           # Maximum compression optimization level for hardware register pipeline computations (O3)
+lto = true              # Link-time optimization (LTO) enabled to eliminate dead code globally
+codegen-units = 1       # Restricts code generation to a single unit to maximize compiler optimization merge efficiency
+panic = "abort"         # Aborts on panic to eliminate stack unwinding tracking overhead and prevent latency jitter
+
