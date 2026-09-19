@@ -4,41 +4,43 @@
 
 ---
 
-### 레포지토리를 만들게 된 이유
+### Motivation
 
-디도스 공격을 받으면 수비하는 사람은 왜 매번 손해를 봐야 할까요?
+When hit by a volumetric DDoS burst, why must the defender inherently suffer exponential infrastructure and financial liabilities?
 
-"디도스 공격을 받을 시 공격자의 지갑만 털리는 구조를 만들자" (자본적 비대칭 해결) -> "그러려면 패킷을 하나씩 검사하지 말고 수학적 파도로 상쇄시키자" (수학적 소산) -> "그러려면 패킷 내용물 안 까보고 흐름의 위상만 스캔하자" (비침습식 체크) -> 그렇게 되면 공격자의 공격자산을 수비자의 손실 없이 소산 시킬 수 있지 않을까? -> 그리고 디도스 공격 자산의 위치를 특정하거나 공격 자산을 동결하는 방식에 사용 할 수 있게 확장성을 미리 생각해서 구성하자. 
-
----
-
-### 공격을 소산시키는 방식은 어떻게 할까?
-
--> 네트워크 보안(eBPF/XDP)이 수집한 데이터를 AI 인프라(CUDA/Triton)의 레지스터 가속 레일로 무복사 토스해서 대수학으로 녹여버리는 방식을 사용하자.
-
-### 그렇다면 어떻게 구성해 봐야 할까?
-
--> 리눅스 커널 패킷 인입점(XDP) 레이어에서 정형화한 32바이트 하드웨어 캐시라인 배수 텐서를, 유저 공간(User-space)의 락프리 순환 버퍼(bpf_ringbuf) 주소선 하이재킹을 통해 가속기(NVIDIA GPU) 레일 단에 다이렉트 기부(Donation)하자. -> 이후 엔비디아 내장 고속 벡터화 로드 명령어(LDG/int4)를 유도하여 SM 온칩 SRAM(Shared Memory) 상에서 뱅크 충돌(Bank Conflict)을 피하고, FMA(Fused Multiply-Add) 및 SFU(Special Function Unit) 하드웨어 가속기 클록 레지스터 프리미티브 단독 연산으로 3차 비대칭 모멘트(왜도) 및 공분산 행렬식 결정값 $\text{Det} \rightarrow 0.0$ 의 수치해석적 붕괴 궤적을 일직선 무분기(Branchless) 파이프라인으로 관철해 소산시키자.
-
-### 아무리 zero-copy 링버퍼를 쓴다고 해도, 네트워크 카드(NIC)로 들어온 데이터를 OS 커널을 거쳐 PCIe 버스를 타고 GPU까지 보내서 수학 연산을 하고 다시 커널로 돌아오는 구조는 호스트-디바이스 간 물리적 통신 레이턴시가 패킷 드롭 레이트보다 더 큰 병목이 될 확률이 높지 않을까?
-
--> 개별 패킷을 커널에서 나노초(ns) 단위의 비트 연산으로 즉시 처리하되, 네트워크 통계 데이터만 밀리초(ms) 단위로 묶어 GPU로 비동기 전송함으로써 PCIe 병목 없이 거시적인 제어 신호를 피드백받는 구조로 구성하자. -> 패킷 인입 시 GPU 개입 없이 eBPF 기반의 무분기 비트 연산으로 즉시 통과 및 차단하며, 통계 지표는 락프리 링 버퍼로 비동기 전송하게 하자
+"Let’s engineer a structural paradigm where an ongoing DDoS attack only bleeds the attacker’s financial and computing assets" (**Capital Asymmetry Resolution**) → "To achieve this, we must stop parsing packets individually and instead dissolve them as a collective mathematical wave" (**Mathematical Dissipation**) → "To achieve that, we must inspect the topological trajectory of the traffic manifold without copying or inspecting the payload" (**Non-Invasive Telemetry**) → Could this effectively dissipate the attacker's botnet assets with zero compute-overhead or cost on the defender's side? → Furthermore, let us design this with built-in extensibility to pinpoint the physical coordinates of malicious botnet clusters or freeze their attack assets network-wide.
 
 ---
 
-### 코드 레벨 아키텍처 및 내부 구현에 대한 딥다이브는 아래의 명세서를 참조 부탁드립니다.
+### Strategy for Mathematical Dissipation
 
-> *   [전체 인프라 제로카피 인터록 및 수학적 소산 수식 개요 (`docs/ARCHITECTURE.md`)](./docs/ARCHITECTURE.md)
-> *   [eBPF/XDP 커널 데이터 플레인 및 무분기 MUX 명세 (`docs/KERNEL_DATA_PLANE.md`)](./docs/KERNEL_DATA_PLANE.md)
-> *   [CUDA 온칩 공유 메모리 뱅크 충돌 박멸 및 기계어 최적화 명세 (`docs/ACCELERATOR_CORE.md`)](./docs/ACCELERATOR_CORE.md)
+→ We stream the metrics harvested at the bare-metal network interface layer (**eBPF/XDP**) directly onto the hardware accelerator (**NVIDIA CUDA/Triton**) register lanes via an overhead-free zero-copy interlock, dissolving the volumetric burst through deterministic linear algebra.
+
+### Architectural Layout & Interlock Mechanism
+
+→ At the Linux kernel packet ingress gate (**XDP**), we structure the incoming metrics into localized tensors strictly aligned to 32-byte hardware cache-line boundaries. By hijacking the memory address lines via user-space lock-free ring buffers (`bpf_ringbuf`), we execute a **direct register donation** to the accelerator (NVIDIA GPU) execution rail. → Next, we induce native high-speed vectorized load primitives (`LDG.E.128`) to completely bypass GPU Shared Memory **Bank Conflicts** on the Streaming Multiprocessor (SM) on-chip SRAM. Utilizing **Fused Multiply-Add (FMA)** hardware instructions and **Special Function Unit (SFU)** clock primitives, we compute the 3rd asymmetric moment (skewness) and the covariance determinant. This forces the **numerical collapse trajectory** where Det → 0.0, neutralizing the malicious surge through a deterministic, **branchless execution pipeline**.
+
+### Even with a zero-copy ring buffer, wouldn't routing packets from the NIC through the OS kernel and across the PCIe bus to the GPU for algebraic calculation—and then back to the kernel—introduce a physical host-to-device latency bottleneck far worse than the line-rate packet drop window?
+
+→ We isolate the pipeline into a dual-path layout: individual packets are processed instantaneously at the kernel layer using nanosecond-scale bitwise operations, while network statistics are batched at millisecond intervals and asynchronously dispatched to the GPU. This eliminates the **PCIe bus bottleneck** while continuously returning macroscopic feedback loops. → Upon packet ingress, the network plane executes immediate gating or passing based on eBPF-driven branchless bit masks (**Zero-GPU Intervention**), while the telemetric indicators are streamed out in the background via lock-free ring buffers.
+
 ---
 
-본 프로젝트는 실시간 패킷 처리 통로(Hot Path)와 가속기 추론 통로(Shadow Path)를 물리적으로 단절하여 **OS 커널 ↔ PCIe 버스 ↔ GPU 가속기 간의 통신 레이턴시 병목을 우회**합니다.
+### For deep dives into code-level architecture and low-level internal implementations, please refer to the specifications below:
 
-*   **실시간 집행 (Hot Path):** `bitwise_mux.c`가 조건문 없는 정수 비트 연산 마스크를 전개하여 1클록 만에 패킷 통과/증발 집행.
-*   **비동기 분석 (Shadow Path):** `main.rs` 프록시가 32바이트 경량 특징 텐서만 무복사 토스하여 GPU 온칩 SRAM 레일 위에서 왜도 소산 대수학 연산 집행.
-  
-인프라 입구에서 비정상 패킷을 기계어 레벨로 무력화 + 내부 연산 자원을 정적 O(1) 공간 복잡도로 통제, 오토스케일링 없이 생존하는 방화벽 인프라에 대한 poc라고 보시면 됩니다.
+> *   [Comprehensive Infrastructure Zero-Copy Interlock & Mathematical Dissipation Architecture (`docs/ARCHITECTURE.md`)](./docs/ARCHITECTURE.md)
+> *   [eBPF/XDP Kernel Data Plane & Branchless MUX Specification (`docs/KERNEL_DATA_PLANE.md`)](./docs/KERNEL_DATA_PLANE.md)
+> *   [CUDA On-Chip Shared Memory Bank Conflict Eradication & SASS Optimization Specification (`docs/ACCELERATOR_CORE.md`)](./docs/ACCELERATOR_CORE.md)
+
+---
+
+This project physically decouples the real-time execution path (**Hot Path**) from the accelerator analysis path (**Shadow Path**) to **entirely bypass the physical communication latency bottleneck between the OS Kernel ↔ PCIe Bus ↔ GPU Accelerator**.
+
+*   **Real-Time Execution (Hot Path):** `bitwise_mux.c` deploys integer bitwise masks without a single conditional branch, executing deterministic packet passing or instantaneous drop in a single clock cycle.
+*   **Asynchronous Analysis (Shadow Path):** The `main.rs` proxy orchestrates a zero-copy donation of the 32-byte lightweight feature tensors, executing macroscopic algebraic operations for skewness dissipation directly on the GPU on-chip SRAM rails.
+
+In short, this is a Proof-of-Concept (PoC) demonstrating a firewall infrastructure that survives massive volumetric bursts without relying on auto-scaling—neutralizing anomalous packets at the machine-code level at the very edge of the infrastructure while freezing internal computing resources to a static, deterministic O(1) space complexity.
+
 
 ---
 
@@ -54,34 +56,34 @@ graph TD
     classDef pass fill:#064e3b,stroke:#059669,stroke-width:1px,color:#a7f3d0;
 
     %% 1. 패킷 인입 및 관문
-    P_IN["1. 패킷 인입 <br> Line-Rate Stream"]
-    KERNEL["2. 리눅스 커널 관문 <br> target_kernel_xdp/xdp_ingress.c <br><br> • eBPF/XDP 레이어 Q16.16 고정소수점 3차 왜도 선제 완충 <br> • 4대 L4/L7 통합 특징 축 텐서화 <br> [RPS(L7), PPS(L4), ErrorRate(L7), Bandwidth(L4)] <br> • 32B 캐시라인 물리 경계 완벽 수호"]
+    P_IN["1. Packet Ingress <br> Line-Rate Stream"]
+    KERNEL["2. Linux Kernel Gateway <br> target_kernel_xdp/xdp_ingress.c <br><br> • eBPF/XDP Layer Q16.16 Fixed-Point 3rd Skewness Pre-Damping <br> • 4-Axis L4/L7 Unified Feature Tensorization <br> [RPS(L7), PPS(L4), ErrorRate(L7), Bandwidth(L4)] <br> • Strict 32B Cache-Line Physical Boundary Alignment"]
 
     P_IN --> KERNEL
 
     %% 2. 조건 분기 처리
-    PASS_ROUTE["커널 프로토콜 스택 <br> 및 서비스 정상 통과"]
-    MUX_INJECT["6. 실리콘 MUX 제어 규칙 커널 역주입 <br> bitwise_mux.c <br><br> • bpf_map_update_elem FFI 실행 <br> • ingress_gating_map 내 IP 비트 락 즉시 집행 <br> • 조건문 (JMP) 없는 기계어 레벨 차단막 개설"]
+    PASS_ROUTE["Normal Routing <br> Kernel Protocol Stack & Services"]
+    MUX_INJECT["6. Silicon MUX Rule Kernel Inversion <br> bitwise_mux.c <br><br> • Execute bpf_map_update_elem FFI <br> • Atomic IP Bit-Lock Injection into ingress_gating_map <br> • Branchless (No JMP) Machine-Code Gating Barrier"]
 
-    KERNEL -->|"정상 패킷: <br> XDP_PASS"| PASS_ROUTE
-    KERNEL -->|"악성 버스트 검출 / <br> 링버퍼 기부"| PROXY
+    KERNEL -->|"Normal Traffic: <br> XDP_PASS"| PASS_ROUTE
+    KERNEL -->|"Anomalous Burst / <br> Ring-Buffer Donation"| PROXY
 
     %% 3. Rust 프록시 레이어
-    PROXY["3. 비동기 락프리 통제 프록시 <br> target_proxy_rust/main.rs <br><br> • 1024개 정적 배열 링버퍼 구조 (메모리 지터 0%) <br> • u64 제어 데이터 격리 및 features 배열 포인터 조준 <br> • 지터 박멸용 실시간 누적 오차 보정 interval 가동"]
+    PROXY["3. Asynchronous Lock-Free Control Proxy <br> target_proxy_rust/main.rs <br><br> • 1024-Slot Static Array Ring-Buffer (0% Memory Jitter) <br> • u64 Control Data Isolation & Target Features Array Pointers <br> • Real-Time Cumulative Error Compensation Interval"]
 
-    PROXY -->|"FFI 0ns 무복사 <br> 가속기 토스"| ACCEL
+    PROXY -->|"0ns Zero-Copy <br> FFI Accelerator Despatch"| ACCEL
 
     %% 4. 하드웨어 가속기 레이어
-    ACCEL["4. 하드웨어 가속 코어 <br> target_hardware_cuda/ <br><br> • CUDA +1 패딩 스트라이드로 GPU SRAM 뱅크 충돌 0% <br> • Triton 카시미르 압력 및 투과율 수식 제어 <br> • 화력이 강할수록 장벽 압력이 증가하여 <br> 패킷 유효 질량을 제로 (0.0)로 소산"]
+    ACCEL["4. Hardware Accelerator Core <br> target_hardware_cuda/ <br><br> • CUDA +1 Padding Stride for 0% GPU SRAM Bank Conflicts <br> • OpenAI Triton Casimir Pressure & WKB Transmission Control <br> • Dissipate Packet Effective Mass to Zero (0.0) <br> Proportional to Attack Density"]
 
-    ACCEL -->|"128차원 평면 평균 <br> 왜도 레지스터 피드백"| SHADOW
+    ACCEL -->|"128-Dimensional Planar Mean <br> Skewness Register Feedback"| SHADOW
 
     %% 5. 섀도우 검증 엔진 레이어
-    SHADOW["5. 섀도우 위상 검증 엔진 <br> telemetry/shadow_matrix_validator.py <br><br> • 공분산 행렬식 결정값 실시간 분석 (0-Copy 뷰) <br> • 동기화 봇넷 (L4/L7 Flood) 난사 시 <br> 특징 행렬 공간의 1차원 선형 위상 붕괴 포착"]
+    SHADOW["5. Asynchronous Shadow Topology Validator <br> telemetry/shadow_matrix_validator.py <br><br> • Real-Time Covariance Determinant Analysis (0-Copy View) <br> • Capture 1-Dimensional Linear Manifold Collapse <br> During Synchronized Botnet Floods (L4/L7)"]
 
     %% 피드백 클로징 루프
-    SHADOW -->|"위상 붕괴 진단: <br> Determinant -> 0.0 수렴"| MUX_INJECT
-    MUX_INJECT -->|"0ns 락프리 <br> 동기화 장벽"| KERNEL
+    SHADOW -->|"Topology Collapse Diagnosed: <br> Determinant -> 0.0 Convergence"| MUX_INJECT
+    MUX_INJECT -->|"0ns Lock-Free <br> Synchronization Barrier"| KERNEL
 
     %% 클래스 지정 구문 별도 분리
     class P_IN ingress;
@@ -105,28 +107,29 @@ graph TD
 
 ---
 
-# 가동 시나리오 시뮬레이션 명세 (Operational Scenarios)
+# Operational Scenarios & Simulation Specifications
 
-## 🟢 시나리오 A: 평상시 다이나믹 트래픽 운영 (Normal Dynamic Workloads)
+## 🟢 Scenario A: Normal Dynamic Workloads
 
-* **상황 개요:** 대규모 마케팅 프로모션이나 점심시간 대 일반 사용자의 대규모 서비스 접속으로 인해 트래픽 진폭(RPS/PPS)이 무작위적이고 동적으로 상승하는 상태.
-* **시스템 내부 동작 메커니즘:**
-    * **자유도 보존:** 사용자들이 각자 다른 브라우저, 다른 주기, 다른 크기의 패킷을 요청하므로, shadow_matrix_validator.py가 섀도우 영역에서 계산하는 4x4 특징 매트릭스의 공분산 행렬식 결정값(Determinant)이 안전 하한선(tolerance_floor = 1e-5)을 상회하며 공간의 자유도가 무결하게 유지됩니다.
-    * **바이패스 정렬:** ingress_gating_map 내에 해당 IP들의 위상 마스크는 0 (XDP_PASS) 상태로 유지됩니다.
-    * **지터 0% 유지:** IngressTrafficAdapter가 가속기 메모리 버스와 1:1 대응되는 C-Contiguous Array 물리 공간을 단 1회 선점 확보해 둔 그릇에 데이터를 매핑하므로 메모리 파편화 래그 없이 통과합니다.
-* **최종 결과:** 방화벽의 CPU 및 메모리 점유율의 미동 없이, 모든 요청이 정상적으로 프로토콜 스택을 통과하여 웹 서버에 도달합니다.
+* **Condition Overview:** A state where traffic amplitude (RPS/PPS) rises randomly and dynamically due to standard user activity, such as massive marketing promotions or peak lunchtime concurrency.
+* **Internal System Mechanisms:**
+    * **Conservation of Degrees of Freedom:** Since organic users operate via diverse browsers, disparate request intervals, and varied packet dimensions, the covariance determinant of the 4x4 feature matrix computed asynchronously by `shadow_matrix_validator.py` remains comfortably above the safety lower bound (`tolerance_floor = 1e-5`). The spatial degrees of freedom are preserved intact.
+    * **Bypass Alignment:** The topological gating masks for these organic IPs inside the `ingress_gating_map` remain explicitly at 0 (`XDP_PASS`).
+    * **0% Jitter Enforcement:** The `IngressTrafficAdapter` maps incoming metadata onto a pre-allocated, physical C-Contiguous Array space (`order='C'`) mapped 1:1 with the hardware accelerator memory bus. This eliminates dynamic heap fragmentation and memory allocation lag during high-throughput workloads.
+* **Final Outcome:** With zero fluctuations in the firewall’s CPU or memory utilization, all legitimate requests smoothly pass through the kernel protocol stack to reach the upstream web servers.
 
 ---
 
-## 🚨 시나리오 B: 디도스 툴킷 폭격 및 항상성 각성 (Botnet Confinement Lock)
+## 🚨 Scenario B: Botnet Confinement Lock (DDoS Weaponization Shock)
 
-* **상황 개요:** 해커 군단이 좀비 PC(봇넷) 및 대역폭 점유 툴킷을 사용하여 초당 수백만 발의 변조된 악성 가짜 패킷을 인프라 레이어에 강제로 일제히 난사하기 시작한 상태.
-* **시스템 내부 동작 메커니즘:**
-    * **위상 공간 붕괴 감지:** 툴에 의해 제어되는 봇넷 무리가 '동기화'되어 동일한 양상의 패킷을 난사하는 순간, 특징 공간의 자유도가 완전히 파괴됩니다. 섀도우 엔진이 이를 역산하면 공분산 행렬식 결정값이 정확히 0.0으로 수렴하며 짜부라지는 '위상 공간 붕괴' 현상이 체포됩니다.
-    * **카시미르 양자 압착 제어:** 128차원 특징 축 텐서가 가속기 레일 위로 인입됩니다. 트래픽 변동성(분산)이 임계 장벽 제로 한계선을 돌파하여 폭주하려고 하자, schrodinger_filter.triton 커널 내부의 투과율 공식 $T = \exp(-2\sqrt{V})$이 각성합니다. 공격 난사 화력이 강하면 강할수록 분모의 압착 압력이 곱절로 폭등하여, 패킷의 통과 확률(T)을 소수점을 넘어 기학학적 제로(0.0)로 강제 평탄화 시킵니다.
-    * **실리콘 비트 락(MUX) 커널 주입:** 통제관인 Rust 마스터 데몬이 가속기 레지스터 출력으로부터 이상 징후를 확정 짓고, 5ms 고속 폴링 레일을 타고 리눅스 커널 최하단의 ingress_gating_map을 하이재킹하여 공격 IP 그룹에 차단 마스크(1)를 직접 주입합니다.
-    * **1-Cycle 무분기 증발:** 이제 최전방 관문(bitwise_mux.c)에서는 패킷 분석에 if (공격) 같은 조건문을 쓰지 않고, 2의 보수 정수 연산 마스크를 전개하여 단 1클록 만에 논리 연산자로만 해당 패킷들을 커널 상단으로 올리지 않고 물리적으로 즉시 증발(XDP_DROP)시킵니다.
-* **최종 결과:** 인프라 자원(CPU 분기 예측 실패 지터 0%, 미분 노드 거세로 RAM/VRAM 소모 복잡도 $O(1)$ 동결)의 오염 없이 대규모 폭격 트래픽 전체가 진공 락 상태로 격리·소산됩니다.
+* **Condition Overview:** A malicious adversarial cluster launches an orchestrated volumetric onslaught, leveraging botnets (zombie PCs) and amplification toolkits to force-inject millions of mutated packets per second directly into the infrastructure ingress plane.
+* **Internal System Mechanisms:**
+    * **Manifold Dimensionality Atrophy Detection:** The moment the tool-driven botnet army synchronizes its packet profile parameters, the structural entropy and degrees of freedom within the 4D feature manifold are instantly destroyed. The shadow engine detects this anomaly as a **Topology Collapse**, where the covariance determinant mathematically converges precisely to `0.0`.
+    * **Casimir Quantum Compression:** The 128-dimensional feature axis tensor enters the accelerator rail. As the traffic variance threatens to breach the zero-boundary threshold, the WKB transmission coefficient formula \(T = \exp(-2\sqrt{V})\) embedded inside the `schrodinger_filter.triton` kernel activates. As the volumetric assault density (V) escalates, the denominator's compressive pressure scales exponentially, instantly flattening the packet transmission probability (T) geometrically down to a absolute zero (`0.0`).
+    * **Silicon Bit-Lock (MUX) Kernel Inversion:** The Master Rust Daemon flags the hardware register anomalies and, via a high-speed 5ms polling rail, hijacks the Linux kernel’s bottom-most `ingress_gating_map` to atomically inject dropping masks (`1 = XDP_DROP`) for the offending IP space.
+    * **Single-Cycle Branchless Evacuation:** The outermost gating gateway (`bitwise_mux.c`) completely bypasses conditional branch parsing (e.g., eliminating `if (is_attack)` evaluation). Instead, it deploys a 2's complement integer arithmetic mask, leveraging deterministic hardware logic operations to physically evaporate malicious packets instantly before they ever hit the upper OS kernel stack.
+* **Final Outcome:** The entire volumetric burst is isolated and mathematically dissipated inside a zero-latency vacuum lock. Infrastructure computing resources remain fully insulated, guaranteeing 0% CPU branch misprediction jitter and a frozen O(1) space complexity for RAM/VRAM utilization.
+
 
 
 ---
@@ -134,44 +137,43 @@ graph TD
 
 # 1. 라인 레이트(Line-rate) 인입 상황에서의 CPU 마비 구조
 
-### ❌ 저장소 초기 도출 문제점
+### ❌ 기존 방식 및 저장소 초기 도출 문제점
 - **JMP 분기 지터에 의한 하드웨어 스탈(Stall):** 레거시 방화벽은 패킷 차단 여부를 결정할 때 CPU의 조건 분기문(if-else)을 사용합니다. 초당 수억 개의 패킷이 몰리는 디도스 상황에서는 CPU의 분기 예측 실패(Branch Misprediction)가 폭발하며 파이프라인이 완전히 멈춰 서버가 먹통이 됩니다.
 - **메모리 복사(Transient Copy) 오버헤드:** 패킷 메트릭을 유저 공간이나 AI 추론 엔진으로 넘길 때 동적 메모리 할당과 데이터 복사가 일어나 캐시 라인이 파편화되고 가비지 컬렉션(GC) 지터가 발생합니다.
 
-### 💎 우리의 수정안 (target-kernel-xdp & adapters)
+### 💎 어떻게 수정해볼까요? (target-kernel-xdp & adapters)
 - **분기문 없는 정수 비트 MUX (bitwise_mux.c):** 2의 보수 연산을 이용하여 게이트 신호를 0x00000000 또는 0xFFFFFFFF 마스크로 즉시 전개합니다. CPU 논리 레지스터 단에서 단 1클록 만에 패킷 통과(XDP_PASS)와 즉시 증발(XDP_DROP)을 분기문 없이 물리적으로 스위칭합니다.
-- **0-Copy 주소선 수호 및 하드웨어 정렬 (api_adapter.py):** order='C' 연속 메모리 선점 및 32바이트 하드웨어 버스 스트라이드 칼정렬(aligned(32))을 강제하여 데이터 복사 없이 가속기 레지스터 단으로 데이터를 다이렉트 이식합니다. 지터율이 정확히 0%에 수렴합니다.
+- **0-Copy 주소선 수호 및 하드웨어 정렬 (api_adapter.py):** order='C' 연속 메모리 선점 및 32바이트 하드웨어 버스 스트라이드 칼정렬(aligned(32))을 강제하여 데이터 복사 없이 가속기 레지스터 단으로 데이터를 다이렉트 이식합니다. 지터율을 0%로 유도합니다.
 
 ---
 
 # 2. 폭발적인 트래픽 버스트 충격파로 인한 자원 고갈 (OOM)
 
-### ❌ 저장소 초기 도출 문제점
+### ❌ 기존 방식 및 저장소 초기 도출 문제점
 - **연결 추적 테이블(Conntrack) 폭주:** 레거시 장비는 모든 세션을 메모리에 기록하므로 상태 테이블이 가득 차며 커널 패닉이 발생합니다.
 - **AI 컴퓨팅 그래프의 미분 그래프 폭주:** 일반적인 딥러닝 방화벽(PyTorch/TensorFlow)은 추론 과정에서 부동소수점 미분 값을 추적하기 위해 컴퓨팅 그래프를 동적 힙(Heap) 메모리에 유지합니다. 트래픽 버스트 발생 시 VRAM 고갈로 인한 OOM(Out Of Memory)으로 방어 장비가 먼저 폭사합니다.
 
-### 💎 우리의 수정안 (core-formula/autograd_free.py)
-- **대수학적 역전파 그레디언트 체인 거세:** 수식 레이어에서 미분 노드 추적 링크를 원천 차단(is_gradient_tracked = False)하고 사본 생성을 금지했습니다. 입력 트래픽의 양과 상관없이 메모리 점유율이 수리적으로 완벽하게 동결되는 공간 복잡도 O(1) 장벽을 구축하여 시스템의 절대적인 수치적 면역력을 확보했습니다.
+### 💎 어떻게 수정해볼까요? (core-formula/autograd_free.py)
+- **대수학적 역전파 그레디언트 체인 제거:** 수식 레이어에서 미분 노드 추적 링크를 원천 차단(is_gradient_tracked = False)하고 사본 생성을 금지했습니다. 입력 트래픽의 양과 상관없이 메모리 점유율이 수리적으로 동결되는 공간 복잡도 O(1) 를 유도하여 시스템의 안정성을 확보했습니다.
 
 ---
 
 # 3. 미지의 제로데이 및 고지능형 봇넷 동기화 공격의 사각지대
 
-### ❌ 저장소 초기 도출 문제점
-- **시그니처 패턴 매칭의 한계:** 레거시 방화벽은 정규표현식 패턴이나 알려진 IP 블랙리스트 기반이므로 패턴을 비튼 제로데이(Zero-day) 공격을 막지 못합니다.
-- **AI 판정 경계의 왜곡:** 정상 요청으로 위장한 봇넷 트래픽이 유입되면 일반적인 AI는 판정 경계선이 교란되어 대규모 미탐 및 오탐(정상 고객 차단)을 유발합니다.
+### ❌ 기존 방식 및 저장소 초기 도출 문제점
+- **시그니처 패턴 매칭의 한계:** 정규표현식 패턴이나 알려진 IP 블랙리스트 기반의 레거시 방화벽은 패턴을 비튼 제로데이(Zero-day) 공격에 취약점이 생깁니다.
+- **AI 판정 경계의 왜곡:** 정상 요청으로 위장한 봇넷 트래픽이 유입되면 일반적인 AI는 판정 경계선이 교란되어 대규모 미탐 및 오탐(정상 고객 차단)의 가능성이 있습니다.
 
-### 💎 우리의 수정안 (telemetry/shadow_matrix_validator.py)
-- **공분산 행렬식 결정값(Determinant) 공간 추적:** 해커 무리가 디도스 툴킷으로 트래픽을 일제히 난사하면 특징 벡터 공간의 자유도가 상실됩니다. 이를 메인 핫 패스와 격리된그림자(Shadow) 노드에서 비동기로 낚아채 공분산 행렬식을 역산합니다. 공격이 동기화되는 순간 결정값이 0으로 수렴하며 위상이 납작하게 짜부라지는 '위상 공간 붕괴(Topology Collapse)' 현상을 감지해 내어, 단 하나의 시그니처 없이도 해커 무리의 행동 자체를 원천 차단합니다.
-
+### 💎 어떻게 수정해볼까요? (telemetry/shadow_matrix_validator.py)
+- **공분산 행렬식 결정값(Determinant) 공간 추적:** 악의적 공격자가 디도스 툴킷으로 트래픽을 일제히 난사하면 특징 벡터 공간의 자유도가 상실됩니다. 이를 메인 핫 패스와 격리된 그림자(Shadow) 노드에서 비동기로 낚아채 공분산 행렬식을 역산합니다. 공격이 동기화되는 순간 결정값이 0으로 수렴하며 위상이 납작하게 짜부라지는 '위상 공간 붕괴(Topology Collapse)' 현상을 감지해 내어, 어떠한 정적인 시그니처(패턴 매칭) 없이도 오직 '동기화된 행동 특성' 자체를 실시간 유기적 차단 마스크로 가공하여 처리합니다.
 ---
 
 # 4. 물리 연산 스탈 및 특이점 폭주 리스크
 
-### ❌ 저장소 초기 도출 문제점
+### ❌ 기존 방식 및 저장소 초기 도출 문제점
 - **하드웨어 제어권 상실:** 일반 소프트웨어 방화벽은 최하단 물리 하드웨어(SRAM, GPU SM)를 통제하지 못하므로 드라이버 단에서 병목이 생깁니다. 또한 수식 연산 중 분모가 0이 되거나 극단적인 부동소수점 발산이 일어나 NaN 또는 Inf 노이즈가 유입되면 시스템 전체가 무한 록(Lock)에 빠집니다.
 
-### 💎 우리의 수정안 (target-hardware-cuda & telemetry)
+### 💎 어떻게 수정해볼까요? (target-hardware-cuda & telemetry)
 - **공유 메모리 뱅크 충돌 박멸 및 전용 기계어 사상 (skewness_kernel.cu):** 공유 메모리 배열에 1바이트 더미 패딩(ALIGNED_STRIDE 129)을 주어 GPU 32개 뱅크 충돌을 하드웨어적으로 0%로 통제합니다. 또한 엔비디아 내장 가속 기계어인 rsqrtf() 및 단일 클록 fmaf() 명령어로 직역되도록 설계했습니다.
 트래픽의 변동성을 기반으로 슈뢰딩거 포텐셜 장벽(카시미르 효과)을 시뮬레이션하여, 지수함수적 투과율 공식 $T = \exp(-2\sqrt{V})$을 통해 봇넷 노이즈 패킷의 질량을 수학적으로 0.0에 수렴시켜 곱셈 단 한 번으로 증발 소산시킵니다.
 - **비침습적 물리 신호 역공학 관제 (hardware_shifter_telemetry.py):** 단 한 줄의 로그 오버헤드도 없이 GPU 칩셋 자체의 전력 소모 경사도(Power Gradient)와 PCIe 대역폭 파형만을 역공학(NVML)으로 관측하여 시스템 발산 특이점을 역으로 진단합니다.
@@ -180,22 +182,22 @@ graph TD
 
 # 5. 실시간 동적 차단 피드백 레이턴시 지연
 
-### ❌ 저장소 초기 도출 문제점
-- **통제 데몬의 동기식 락(Lock) 병목:** 분석 플레인이 공격을 탐지하더라도 이를 커널 방화벽 룰셋(iptables re-apply 등)에 적용하는 과정에서 무거운 시스템 콜(Syscall)과 락 동기화 지연이 발생하여 그 사이에 인프라가 초토화됩니다.
+### ❌ 기존 방식 및 저장소 초기 도출 문제점
+- **통제 데몬의 동기식 락(Lock) 병목:** 분석 플레인이 공격을 탐지하더라도 이를 커널 방화벽 룰셋(iptables re-apply 등)에 적용하는 과정에서 무거운 시스템 콜(Syscall)과 락 동기화 지연이 발생하여 그 사이에 인프라가 손상됩니다.
 
-### 💎 우리의 수정안 (telemetry/ring_buffer_monitor.rs & target-proxy-rust)
+### 💎 어떻게 수정해볼까요? (telemetry/ring_buffer_monitor.rs & target-proxy-rust)
 - **ABI 1:1 정렬 락프리 순환 버퍼:** Rust 단에서 #[repr(C, align(32))] 복제 패딩 레이아웃을 통해 C 커널이 링버퍼에 던진 텐서 로그를 0ns 무복사 블록 복사(SIMD Copy)로 가로챕니다.
-- **커널 HBM 맵 직접 하이재킹:** 비동기 채널(Tokio MPSC)과 FFI를 통해 정제된 위상 점수를 리눅스 커널의 고속 HBM 해시 맵(ingress_gating_map) 단축 레일 위로 0ns 비차단 락프리(Lock-Free) 업데이트 주입하여 실시간 자가 치유 면역 피드백 루프를 완성합니다.
+- **커널 HBM 맵 직접 하이재킹:** 비동기 채널(Tokio MPSC)과 FFI(Foreign Function Interface)를 통해 도출된 위상 제어 마스크 신호를 리눅스 커널 커스텀 공간에 할당된 고속 BPF_MAP_TYPE_HASH 맵 위로 주입합니다. 이 과정은 커널 내장 RCU(Read-Copy-Update) 메커니즘을 활용하여 데이터 플레인의 패킷 처리 흐름을 멈추지 않는 비차단 원자적(Atomic) 업데이트로 수행됩니다. 이를 통해 제어 평면의 오버헤드가 제로 패스(Hot Path)에 전파되는 것을 차단합니다.
 
 
 ---
 
 # 6. [데이터 인입 단계 최적화] adapters/api_adapter.py
 
-### ❌ 저장소 초기 도출 문제점
+### ❌ 기존 방식 및 저장소 초기 도출 문제점
 - **동적 리스트 파편화 오버헤드:** 대규모 웹/API 인프라 로그를 실시간으로 수집할 때, 파이썬의 기본 동적 리스트 구조는 메모리가 사방으로 파편화됩니다. 이를 하드웨어 가속기(GPU/NPU)로 넘기기 위해 변환하는 과정에서 무거운 호스트 메모리 복사(Transient Copy) 비용이 발생하고, 가비지 컬렉션(GC) 지터를 유발하여 라인 레이트 패킷 처리를 발목 잡습니다.
 
-### 💎 우리의 수정안
+### 💎 어떻게 수정해볼까요? 
 - **메모리 복사 제로 텐서화 어댑터 (api_adapter.py):** 인프라 메트릭이 인입되는 최전방 관문에서 특징(Feature) 축을 처음부터 메모리가 물리적으로 연속된 공간을 선점하는 C-Contiguous Array (order='C') 구조로 선언합니다. 실제 사용하는 핵심 축(rps, pps, error_rate, bandwidth_delta) 외의 공간을 128차원으로 선언하고 하드웨어 캐시 라인(32B/64B) 배수로 정렬하여, 가속기 레지스터 단으로 단 1바이트의 Transient Copy 오버헤드도 없이 0ns로 데이터를 다이렉트 이식합니다.
 
 ---
@@ -205,7 +207,7 @@ graph TD
 ### ❌ 저장소 초기 도출 문제점
 - **수리적 예외로 인한 커널 폭사 위험:** 로우 레벨 드라이버(XDP) 및 하드웨어 가속기 커널(CUDA/Triton)에 수식을 직접 주입하는 시스템은 부동소수점 오염에 극도로 취약합니다. 입력 데이터에 아주 미세한 오차가 발생해 수식이 발산하거나, 분모가 0이 되어 NaN 또는 Inf 노이즈가 커널 내부로 한 번 주입되면 가속 파이프라인 전체가 무한 루프에 빠져 방화벽 장비가 크래시(Kernel Panic)됩니다.
 
-### 💎 우리의 수정안
+### 💎 어떻게 수정해볼까요? 
 - **수리 물리 무결성 샌드박스 유닛 테스트 (test_homeostasis_core.py):** 프로덕션 배포 전, 대규모 API 트래픽 어댑터의 연속 메모리 얼라인먼트 상태, 토러스 위상 천이의 영역 구속력, 왜도 댐퍼의 수치 해석적 안정성을 사전에 완벽하게 시뮬레이션 검증(Sanity Verification)합니다. 극단적인 디도스 폭격 상태를 모사한 난수 텐서를 주입하여 수식이 음의 필드로 폭주하지 않는지 가드레일을 선제 체크함으로써, 실전 환경에서의 커널 정적 거부 및 런타임 크래시 리스크를 0%로 통제합니다.
 
 ---
