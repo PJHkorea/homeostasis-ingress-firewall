@@ -3,10 +3,10 @@
  * This program is free software: you can redistribute it and/or modify it under 
  * the terms of the GNU Affero General Public License as published by the Free Software Foundation.
  *
- * [5th-Gen Pure Ingress Hardware Controller] Rust Enterprise Async Homeostasis Proxy.
+ * [Pure Ingress Hardware Controller] Rust Enterprise Async Homeostasis Proxy.
  * 
- * 커널 공간(eBPF/XDP)과 하드웨어 가속기(Triton/JAX/CUDA)를 연결하는 통제관(Control Plane Bridge)입니다.
- * 0ns 제로 카피 포인터 변환 및 비동기 멀티스레딩 파이프라인을 안전하게 관장하는 AGPLv3 모듈입니다.
+ * A control plane bridge connecting kernel space (eBPF/XDP) and hardware accelerators (Triton/JAX/CUDA).
+ * An AGPLv3 module that manages zero-copy pointer transformations and asynchronous multi-threaded pipelines.
  */
 
 use tokio::sync::mpsc;
@@ -14,13 +14,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-// [★ 아키텍처 고도화: libbpf-rs 네이티브 인터페이스 바인딩 선점]
-// 주석 모사 단계를 파괴하고 실제 리눅스 커널 HBM 해시 맵에 0ns 락프리 시스템 콜을 때리기 위한 라이브러리 확장
+// [Architecture Enhancement: libbpf-rs Native Interface Binding Pre-allocation]
+// Library extensions to issue zero-copy, lock-free system calls to the actual Linux kernel HBM hash map.
 use libbpf_rs::{ObjectBuilder, MapFlags};
 
 /*
- * [★ FFI 바인딩 주입] target_hardware_cuda/skewness_kernel.cu에서 
- * 최종 수리·마감한 128차원 전체 왜도 평균 리덕션 가속 런처 함수를 Rust 단축 링크로 연결합니다.
+ * [FFI Binding Injection] Links the 128-dimensional aggregate skewness metrics acceleration launcher function 
+ * finalized in target_hardware_cuda/skewness_kernel.cu via a Rust static link.
  */
 #[link(name = "skewness_kernel", kind = "static")]
 extern "C" {
@@ -29,63 +29,61 @@ extern "C" {
         d_damped_stream: *mut f32,
         d_skewness_vector: *mut f32,
         batch_size: std::os::raw::c_int,
-        stream: *mut std::ffi::c_void, // cudaStream_t 매핑 레일
+        stream: *mut std::ffi::c_void, // Maps the cudaStream_t rail
     );
 }
 
-
 /*
- * [★ 아키텍처 리팩토링: FFI Matrix Alignment Re-sync]
- * CUDA C++ 단의 skewness_kernel.cu은 d_traffic_stream 포인터를 인입받아 순수 f32 원소 배열로 접근합니다.
- * Rust의 u64(packet_count) 필드가 섞여 있으면 메모리 얼라인먼트 패딩으로 인해 데이터 비트열이 통째로 오염됩니다.
- * 이를 차단하기 위해 제어용 메타데이터와 가속기 연산 전용 4대 특징 벡터 배열(features) 공간을 물리적으로 격리합니다.
+ * [Architecture Refactoring: FFI Matrix Alignment Re-sync]
+ * The CUDA C++ layer in skewness_kernel.cu receives the d_traffic_stream pointer and accesses it as a raw f32 array.
+ * Intermixing Rust's u64 (packet_count) fields can corrupt the data bitstream entirely due to memory alignment padding.
+ * To prevent this, control metadata and the 4 key feature vector arrays (features) designated for accelerator operations are physically isolated.
  * 
- * 크기 계산: src_ip(4B) + features(4B * 4 = 16B) + packet_count(8B) + padding(4B) = 32바이트 경계선 칼정렬 완결
+ * Sizing layout: src_ip(4B) + features(4B * 4 = 16B) + packet_count(8B) + padding(4B) = Strict alignment with the 32-byte cache line physical boundary.
  */
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(32))]
 pub struct IngressTrafficMetric {
     pub src_ip: u32,
-    pub features: [f32; 4],     // [RPS, PPS, ErrorRate, BandwidthDelta] 순수 가속기 다이렉트 융합 레일
-    pub packet_count: u64,      // 관제/PPS 카운팅용 제어 평면 필드 (가속기 연산 스트림 오프셋에서 배제)
-    pub padding: u32,           // 32-Byte Stride 가드 보정용 정적 패딩
+    pub features: [f32; 4],     // Pure accelerator direct fused rail tracking RPS, PPS, ErrorRate, and BandwidthDelta metrics
+    pub packet_count: u64,      // Control plane field for tracking PPS metrics (Excluded from the accelerator computational stream offset)
+    pub padding: u32,           // Static padding configured to satisfy the 32-byte stride physical boundary constraint
 }
 
-// 글로벌 공유 인텔리전스 위상 제어 상태 데이터베이스
+// Global shared intelligence phase control context database
 pub struct HomeostasisContext {
-    pub gate_routing_table: HashMap<u32, u32>, // IP별 위상 마스크 테이블 (0: Pass, 1: Drop)
-    pub global_blend_ratio: f32,               // 전역 위상 천이 가변 계수 (t)
+    pub gate_routing_table: HashMap<u32, u32>, // Phase mask table partitioned by IP (0: Pass, 1: Drop)
+    pub global_blend_ratio: f32,               // Global variable phase shift blending ratio coefficient (t)
 }
-
 
 #[tokio::main]
 async fn main() {
     println!("========================================================================");
-    println!("🦀 [PROXY-START] Launching Rust High-Performance Homeostasis Master Hub");
+    println!("[PROXY-START] Launching Rust High-Performance Homeostasis Master Hub");
     println!("========================================================================");
 
-    // [★ 아키텍처 완결: 리눅스 네이티브 eBPF 커널 스켈레톤 오브젝트 로딩 및 맵 바인딩]
-    // Makefile의 BUILD_DIR 규격을 따라 생성된 xdp_ingress.o 바이너리를 메모리에 실시간 주입 적재합니다.
+    // [Architecture Complete: Loading Native Linux eBPF Kernel Skeleton Object and Map Binding]
+    // Loads and injects the xdp_ingress.o binary generated under the Makefile BUILD_DIR specification into memory at runtime.
     let bpf_object_path = "../build/xdp_ingress.o";
     
     let open_object = ObjectBuilder::default()
         .open_file(bpf_object_path)
-        .expect("❌ [Fatal] eBPF Object File Open Failed. Please check if 'make all' was executed.");
+        .expect("[Fatal] eBPF Object File Open Failed. Please check if 'make all' was executed.");
         
     let loaded_object = open_object
         .load()
-        .expect("❌ [Fatal] eBPF Verifier Rejected Ingress Object. Kernel Loading Faulted.");
+        .expect("[Fatal] eBPF Verifier Rejected Ingress Object. Kernel Loading Faulted.");
 
-    // xdp_ingress.c 내부의 ingress_gating_map 해시 맵 주소선을 직접 추출하여 
-    // 비동기 스레드 간 동시성 레이스 컨디션 없이 안전하게 소유권을 양도하기 위해 Arc로 바인딩합니다.
+    // Extracts the map reference for ingress_gating_map inside xdp_ingress.c 
+    // and binds it via Arc to safely manage ownership without race conditions across asynchronous threads.
     let raw_gating_map = loaded_object
         .map("ingress_gating_map")
-        .expect("❌ [Fatal] Cannot find 'ingress_gating_map' in eBPF object blueprint.");
+        .expect("[Fatal] Cannot find 'ingress_gating_map' in eBPF object blueprint.");
         
     let ingress_gating_map_shared_object = Arc::new(raw_gating_map);
 
-    // 1. 비동기 멀티스레딩 통신 레일 개설 (MPSC Channel Pipeline)
-    // 초당 백만 단위 이벤트의 핫 패스 버스트를 스톨 없이 수용하기 위해 102,400 바운디드 채널 유지
+    // 1. Establish asynchronous multi-threaded communication rails (MPSC Channel Pipeline)
+    // Manages a 102,400 bounded channel capacity to handle million-event-per-second hot path bursts without pipeline stalls.
     let (metric_tx, mut metric_rx) = mpsc::channel::<IngressTrafficMetric>(102400);
     
     let global_context = Arc::new(RwLock::new(HomeostasisContext {
@@ -93,32 +91,32 @@ async fn main() {
         global_blend_ratio: 0.0,
     }));
 
-    // 2. [Task 1] 커널 최하단 eBPF/XDP 데이터 플레인 고속 폴링 및 데이터 하이재킹 태스크
+    // 2. [Task 1] Lower Kernel eBPF/XDP Data Plane High-Speed Polling and Data Interception Task
     let kernel_polling_ctx = Arc::clone(&global_context);
     tokio::spawn(async move {
-        println!("🛰️  [Data-Plane-Bridge] eBPF/XDP Ring Buffer Pointer Interception Active.");
+        println!("[Data-Plane-Bridge] eBPF/XDP Ring Buffer Pointer Interception Active.");
         
-        // [★ 지터 박멸] 고정 지연 대신 실시간 누적 실행 지터를 자동 보정하는 interval 레일 전개
+        // [Jitter Elimination] Deploys an interval mechanism that automatically corrects execution jitter instead of using fixed delays.
         let mut polling_interval = tokio::time::interval(Duration::from_millis(10));
-        // 채널 버스트 상황에서 폴링 스레드가 독점적으로 락을 쥐고 타 시스템 루프를 굶기는(Starvation) 현상 방지
+        // Prevents thread starvation where the polling thread exclusively holds the lock under channel burst conditions.
         polling_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         
         loop {
             polling_interval.tick().await;
 
-            // [★ 전 레이어 고도화 동기화 완결]
-            // C 커널(xdp_ingress / bitwise_mux) 및 telemetry 덤프 모듈에서 가공되어 올라온 
-            // 4대 특징 축 [RPS, PPS, ErrorRate, BandwidthDelta] FP32 실수 비트열을 0ns 무복사 매핑 주입
+            // [Multi-Layer High-Speed Synchronization Complete]
+            // Direct zero-copy mapping of the 4 key feature axes [RPS, PPS, ErrorRate, BandwidthDelta] 
+            // processed and structured by the C kernel (xdp_ingress / bitwise_mux) and telemetry dump modules.
             let mock_kernel_metric = IngressTrafficMetric {
-                src_ip: 0xC0A80001, // 192.168.0.1 스푸핑 공격 IP 모사
+                src_ip: 0xC0A80001, // Simulates a spoofed attack source IP (192.168.0.1)
                 features: [
                     15000.0,   // RPS (Requests Per Second)
-                    450000.0,  // PPS (Packets Per Second) -> 30만 임계 조건 돌파 유도
+                    450000.0,  // PPS (Packets Per Second) -> Forces breach of the 300k threshold condition
                     0.01,      // Error Rate (1%)
-                    88.5,      // Bandwidth Delta -> 3차 왜도 및 위상 소산 제어가 터지는 발산 변이 축
+                    88.5,      // Bandwidth Delta -> Asymmetric variance axis triggering the 3rd-order skewness and phase dissipation logic
                 ],
                 packet_count: 500000,
-                padding: 0, // 32바이트 버스 스트라이드 경계선 보정 정형화 완료
+                padding: 0, // 32-byte bus stride physical boundary alignment finalized
             };
 
             if metric_tx.send(mock_kernel_metric).await.is_err() {
@@ -129,72 +127,69 @@ async fn main() {
 
 
 
-
-         // 3. [Task 2] 가속기(CUDA/Triton Core) 연동 및 기하학적 위상 제어 결정 태스크
+            // 3. [Task 2] Accelerator (CUDA/Triton Core) Integration and Geometric Phase Control Decision Task
     let accelerator_ctx = Arc::clone(&global_context);
     tokio::spawn(async move {
-        println!("⚡ [Control-Plane-Engine] Pure Hardware Acceleration Pipeline Bound Active.");
+        println!("[Control-Plane-Engine] Pure Hardware Acceleration Pipeline Bound Active.");
         
         while let Some(metric) = metric_rx.recv().await {
             /*
-             * [★ FFI 연동 구현: Real-time Register-Level Hardware Calculation]
-             * 우리가 앞서 덮어쓰기 오타와 사각지대 버그를 완벽히 픽스한 
-             * launch_hardware_skewness_damper를 FFI를 통해 실제로 트리거합니다.
+             * [FFI Integration: Real-time Register-Level Hardware Calculation]
+             * Triggers launch_hardware_skewness_damper via FFI to execute hardware acceleration routines.
              */
-            let mut d_damped_output = [0.0f32; 128];     // 정제 출력용 정적 캐시라인 배열
-            let mut d_skewness_vector_out = [0.0f32; 1]; // 128차원 전체 평균 왜도 기록 포트
+            let mut d_damped_output = [0.0f32; 128];     // Static cache-line array for refined output
+            let mut d_skewness_vector_out = [0.0f32; 1]; // Port to log the 128-dimensional aggregate skewness metrics
             
-            // [★ 고도화 동기화] 고속 언팩 스트림 바인딩
+            // [High-Speed Synchronization] High-speed unpacked stream binding
             let pps = metric.features[1];
             let bandwidth_delta = metric.features[3];
             
             let is_anomaly_detected = unsafe {
-                // [★ 아키텍처 포인터 정밀 재조율 : Memory Wall 박멸]
-                // 구조체의 기저 주소가 아닌, 내부 features 실수 배열의 시작 주소선(&metric.features[0])을 정확히 조준합니다.
+                // [Memory Wall Elimination: Pointer Alignment Adjustment]
+                // Targets the start address of the internal features array (&metric.features[0]) directly instead of the struct base address.
                 let d_traffic_input = metric.features.as_ptr();
                 
-                // 가속기 비차단 스트림(0: Default Stream) 위로 0ns 하드웨어 연산 타격 명령 주입
+                // Issues zero-copy hardware compute commands over the non-blocking accelerator stream (0: Default Stream)
                 launch_hardware_skewness_damper(
                     d_traffic_input,
                     d_damped_output.as_mut_ptr(),
                     d_skewness_vector_out.as_mut_ptr(),
-                    1,                      // 배치 사이즈 고정 1 (실시간 인라인 스트리밍)
-                    std::ptr::null_mut(),   // 비동기 스트림 제로 래치
+                    1,                      // Batch size fixed to 1 (Real-time inline streaming)
+                    std::ptr::null_mut(),   // Asynchronous stream zero latch
                 );
                 
-                // [사각지대 박멸] 0번 차원이 아닌 128차원 전체 평면의 무결한 평균 왜도 결과값을 
-                // 호스트 스톨(Host Stall) 없이 가속기 레지스터 출력으로부터 직접 역산 검사 수행
+                // Analyzes the aggregate skewness metrics across the entire 128-dimensional global plane 
+                // directly from the accelerator register output without causing host thread stalls
                 d_skewness_vector_out[0].abs() > 3.5
             };
 
-            // [★ 아키텍처 고도화 교차 판정 레일 동기화]
-            // 순수 왜도 폭주 상태뿐만 아니라 고도화된 텔레메트리 스펙의 [PPS 변이 축] 또는 [대역폭 델타 폭주 축]이
-            // 임계치를 돌파하는 비정상 상태 유입 시 동적 홈오스타시스 피드백 장벽을 동시 활성화합니다.
+            // [Multi-Layer Cross-Validation Integration]
+            // Activates the dynamic homeostasis feedback barrier if either the pure skewness anomalous metrics, 
+            // the PPS telemetry specs, or the bandwidth delta variations breach predefined thresholds.
             let fallback_trigger = bandwidth_delta > 50.0 || pps > 300000.0;
 
             if is_anomaly_detected || fallback_trigger {
-                // 비상 상황 인지 즉시 글로벌 위상 게이트 가변 및 격리 마스크 마킹 처리
+                // Instantly adjusts the global phase gate and registers the isolation mask flag upon anomaly detection
                 if let Ok(mut ctx) = accelerator_ctx.write() {
-                    ctx.global_blend_ratio = 1.0;                    // 토로이달 주기 공간 가상 큐 원천 폐쇄 궤도 진입
-                    ctx.gate_routing_table.insert(metric.src_ip, 1); // 1 = XDP_DROP 기계어 증발 마스크 확정
+                    ctx.global_blend_ratio = 1.0;                    // Transition completely to the toroidal buffer space
+                    ctx.gate_routing_table.insert(metric.src_ip, 1); // 1 = Configures the XDP_DROP machine code mask layout
                 }
             }
         }
     });
 
 
-             // 4. [Task 3] 실시간 실리콘 MUX 제어 규칙 커널(eBPF Maps) 고속 동기화 리턴 피드백 태스크
-    // [★ 고도화] libbpf-rs의 Map 객체를 안전하게 참조하기 위해 생성자 레일에서 복제한 BPF Map Arc 객체를 바인딩합니다.
-    // (실전 전개 시 Open된 bpf_object로부터 복적 적출한 ingress_gating_map: Arc<libbpf_rs::Map> 사용)
+             // 4. [Task 3] Real-Time Silicon MUX Control Rules High-Speed Synchronization Kernel (eBPF Maps) Return Feedback Task
+    // Binds the duplicated BPF Map Arc object to safely reference the libbpf-rs Map object.
     let kernel_feedback_ctx = Arc::clone(&global_context);
     let gating_map_handle = Arc::clone(&ingress_gating_map_shared_object); 
 
-    // [★ 라이프사이클 무한 루프 전환 : 영구 수호 모드]
+    // [Persistent Lifecycle Infinite Loop Execution]
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(5)); // 5ms 고속 폴링 레일
+        let mut interval = tokio::time::interval(Duration::from_millis(5)); // 5ms high-speed polling rail
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         
-        println!("🛡️  [Homeostasis-Syncer] Real-time Silicon MUX Dynamic Rule Feedback Ingress Clamped.");
+        println!("[Homeostasis-Syncer] Real-time Silicon MUX Dynamic Rule Feedback Ingress Clamped.");
         println!("------------------------------------------------------------------------");
 
         loop {
@@ -202,18 +197,17 @@ async fn main() {
             
             if let Ok(ctx) = kernel_feedback_ctx.read() {
                 if ctx.global_blend_ratio > 0.9 {
-                    // [★ 아키텍처 완결: Real libbpf-rs Map Interaction Pipeline]
-                    // 가상 출력 주석을 완전히 찢어버리고, 실제로 xdp_ingress.c / bitwise_mux.c 내부의 
-                    // ingress_gating_map(BPF_MAP_TYPE_HASH) 공간에 악성 IP 필터 차단 규칙을 원자적 인젝션합니다.
+                    // [Architecture Complete: Real libbpf-rs Map Interaction Pipeline]
+                    // Atomically injects anomalous IP filter block rules into ingress_gating_map (BPF_MAP_TYPE_HASH) inside xdp_ingress.c / bitwise_mux.c.
                     for (&target_ip, &action_mask) in ctx.gate_routing_table.iter() {
                         
-                        // 타겟 IP 주소(Key)와 차단 액션 마스크(Value)의 로우 바이트 버퍼 슬라이스 정렬
+                        // Raw byte buffer slice alignment for target IP address (Key) and blocking action mask (Value)
                         let raw_key = target_ip.to_ne_bytes();
                         let raw_value = action_mask.to_ne_bytes();
 
-                        // 0ns 비차단 락프리 커널 HBM 해시 맵 다이렉트 신기전 주입 실행
-                        // bpf_map_update_elem 커널 시스템 콜 FFI를 libbpf-rs 인프라 장치가 안전하게 래핑 집행합니다.
-                        match gating_map_handle.update(&raw_key, &raw_value, libbpf_rs::MapFlags::ANY) {
+                        // Executes a zero-copy, non-blocking lock-free kernel HBM hash map direct update.
+                        // The libbpf-rs infrastructure securely wraps and executes the bpf_map_update_elem kernel system call FFI.
+                        match gating_map_handle.update(&raw_key, &raw_value, MapFlags::ANY) {
                             Ok(_) => {
                                 println!(
                                     "🚨 [REAL-TIME HARDWARE LOCK] Vacuum Lock Active | Blend Ratio: {:.1} | MUX Target IP [0x{:X}] Mapped to XDP_DROP", 
@@ -221,7 +215,7 @@ async fn main() {
                                 );
                             }
                             Err(e) => {
-                                eprintln!("❌ [KERNEL-FFI-ERROR] Failed to inject gate mask into eBPF Map: {:?}", e);
+                                eprintln!("[KERNEL-FFI-ERROR] Failed to inject gate mask into eBPF Map: {:?}", e);
                             }
                         }
                     }
@@ -230,12 +224,11 @@ async fn main() {
         }
     });
 
-
-    // 5. [★ 메인 스레드 증발 방지 배리어]
-    // 비동기 워커 스레드들이 호스트 프로세스 조기 종료로 폭사하지 않도록 메인 엔진 홀딩 래치를 가동합니다.
-    tokio::signal::ctrl_c().await.expect("❌ [Fatal] Homeostasis OS Signal Intercept Failed.");
+    // 5. [Main Thread Demise Prevention Barrier]
+    // Activates the main engine holding latch to prevent asynchronous worker threads from terminating due to premature host process exit.
+    tokio::signal::ctrl_c().await.expect("[Fatal] Homeostasis OS Signal Intercept Failed.");
     
     println!("------------------------------------------------------------------------");
-    println!("✅ [SANITY PASSED] Rust Orchestrator exits gracefully via OS interruption signal.");
+    println!("[SANITY PASSED] Rust Orchestrator exits gracefully via OS interruption signal.");
     println!("========================================================================");
 }
