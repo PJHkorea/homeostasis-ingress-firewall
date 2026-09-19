@@ -189,7 +189,7 @@ Within the Triton kernel, the architecture numerically derives the algebraic rep
 If the synchronization density of the adversarial nodes reaches absolute convergence, forcing the geometric manifold distance $d$ to approach zero ($d \to 0$), the denominator vanishes. This triggers a severe numerical risk where the algebraic pressure wildly diverges to infinity ($\infty$) . If a single `NaN` or `Inf` artifact invades the compute pipeline, it can destabilize the entire on-chip acceleration framework.
 
 To secure this critical calculation boundary, the system enforces a strict lower-bound guardrail (`d = max(d, epsilon_floor = 1e-6)`) both within the integration validation framework (`tests/test_homeostasis_core.py`) and inside the native Triton execution loops.
->tolerance_floor (1e-5): Statistical Entropy Threshold
+> epsilon_floor (1e-6): Singularity Protection Bound
 
 By implementing this constraint, mathematical singularities such as dividing by zero or running into illegal negative fields are systematically blocked at the silicon level. This guarantees that the **Fused Multiply-Add (FMA)** machine instruction pipelines remain deterministic and unbroken even under the most volatile volumetric attacks.
 
