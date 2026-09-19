@@ -113,7 +113,7 @@ graph TD
 
 * **Condition Overview:** A state where traffic amplitude (RPS/PPS) rises randomly and dynamically due to standard user activity, such as massive marketing promotions or peak lunchtime concurrency.
 * **Internal System Mechanisms:**
-    * **Conservation of Degrees of Freedom:** Since organic users operate via diverse browsers, disparate request intervals, and varied packet dimensions, the covariance determinant of the 4x4 feature matrix computed asynchronously by `shadow_matrix_validator.py` remains comfortably above the safety lower bound (`tolerance_floor = 1e-5`). The spatial degrees of freedom are preserved intact.
+    * **Conservation of Degrees of Freedom:** Since organic users operate via diverse browsers, disparate request intervals, and varied packet dimensions, the covariance determinant of the 4x4 feature matrix computed asynchronously by `shadow_matrix_validator.py` remains comfortably above the safety lower bound (`tolerance_floor = 1e-5`). The spatial degrees of freedom are preserved intact. (tolerance_floor (1e-5): Statistical Entropy Threshold)
     * **Bypass Alignment:** The topological gating masks for these organic IPs inside the `ingress_gating_map` remain explicitly at 0 (`XDP_PASS`).
     * **0% Jitter Enforcement:** The `IngressTrafficAdapter` maps incoming metadata onto a pre-allocated, physical C-Contiguous Array space (`order='C'`) mapped 1:1 with the hardware accelerator memory bus. This eliminates dynamic heap fragmentation and memory allocation lag during high-throughput workloads.
 * **Final Outcome:** With zero fluctuations in the firewall’s CPU or memory utilization, all legitimate requests smoothly pass through the kernel protocol stack to reach the upstream web servers.
